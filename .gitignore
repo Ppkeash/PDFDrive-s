@@ -1,0 +1,16 @@
+/node_modules
+/.next
+/out
+/build
+.env
+.env*.local
+.DS_Store
+*.pem
+npm-debug.log*
+next-env.d.ts
+
+# secretos / generados
+certs/
+supabase/.temp/
+supabase/.branches/
+supabase/functions/.env
