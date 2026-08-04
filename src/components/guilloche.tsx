@@ -54,31 +54,45 @@ export function Guilloche({ className = "" }: { className?: string }) {
 
       ctx.lineWidth = 0.5;
 
-      // Anillos concéntricos de rosetas, cada uno con distinta razón.
-      const rings = [
-        { r: 0.30, d: 0.72, turns: 26, alpha: 0.5 },
-        { r: 0.22, d: 0.60, turns: 34, alpha: 0.38 },
-        { r: 0.14, d: 0.86, turns: 44, alpha: 0.26 },
+      /**
+       * Un guilloche real no es una sola curva: la máquina graba la misma
+       * figura muchas veces, girándola un poco en cada pasada. El tejido denso
+       * sale de esa repetición, no de la curva suelta.
+       */
+      const bands = [
+        { lobes: 7, a: 0.62, b: 0.3, copies: 60, alpha: 0.3 },
+        { lobes: 11, a: 0.44, b: 0.16, copies: 44, alpha: 0.22 },
+        { lobes: 5, a: 0.26, b: 0.11, copies: 32, alpha: 0.16 },
       ];
 
-      for (const ring of rings) {
-        const rr = R * ring.r;
-        const dd = R * ring.d;
-        const steps = 1400;
-        const limit = Math.floor(steps * eased);
+      const SEGMENTS = 360;
 
-        ctx.strokeStyle = `rgb(${seal} / ${ring.alpha * 0.55})`;
-        ctx.beginPath();
+      for (const band of bands) {
+        const A = R * band.a;
+        const B = R * band.b;
+        const shown = Math.ceil(band.copies * eased);
 
-        for (let i = 0; i <= limit; i++) {
-          const t = (i / steps) * Math.PI * 2 * ring.turns;
-          const k = (R - rr) / rr;
-          const x = cx + (R - rr) * Math.cos(t) + dd * Math.cos(k * t);
-          const y = cy + (R - rr) * Math.sin(t) - dd * Math.sin(k * t);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+        ctx.strokeStyle = `rgb(${seal} / ${band.alpha})`;
+
+        for (let c = 0; c < shown; c++) {
+          const phi = (c / band.copies) * ((Math.PI * 2) / band.lobes);
+          const cosP = Math.cos(phi);
+          const sinP = Math.sin(phi);
+
+          ctx.beginPath();
+          for (let i = 0; i <= SEGMENTS; i++) {
+            const t = (i / SEGMENTS) * Math.PI * 2;
+            const bx = A * Math.cos(t) + B * Math.cos(band.lobes * t);
+            const by = A * Math.sin(t) - B * Math.sin(band.lobes * t);
+            // Cada pasada es la figura anterior girada φ.
+            const x = cx + bx * cosP - by * sinP;
+            const y = cy + bx * sinP + by * cosP;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          ctx.stroke();
         }
-        ctx.stroke();
       }
 
       // Filete exterior: el borde impreso que encierra el grabado.
