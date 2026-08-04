@@ -339,6 +339,21 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
+# Google. Las credenciales salen de Google Cloud Console y viven fuera de git:
+# exporta SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID y ..._SECRET antes de correr
+# `supabase config push`. Si esta sección faltara, un push volvería a dejar
+# Google desactivado en el proyecto remoto.
+# URI de redirección autorizado en Google Cloud:
+#   https://ciummdvkyhihofpxzmjs.supabase.co/auth/v1/callback
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+skip_nonce_check = false
+email_optional = false
+
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
 [auth.web3.solana]
