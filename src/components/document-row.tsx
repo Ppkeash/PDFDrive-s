@@ -5,29 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { renameDocument, softDeleteDocument } from "@/app/drive/actions";
-import {
-  Download,
-  FileText,
-  MoreVertical,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { StatusChip } from "@/components/status-chip";
+import { Download, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DocStatus } from "@/types";
-
-const STATUS_LABEL: Record<DocStatus, string> = {
-  borrador: "Borrador",
-  en_firma: "En firma",
-  firmado: "Firmado",
-  archivado: "Archivado",
-};
-
-const STATUS_COLOR: Record<DocStatus, string> = {
-  borrador: "bg-muted text-muted-foreground",
-  en_firma: "bg-amber-100 text-amber-700",
-  firmado: "bg-green-100 text-green-700",
-  archivado: "bg-muted text-muted-foreground",
-};
 
 export function DocumentRow({
   id,
@@ -77,42 +58,43 @@ export function DocumentRow({
   return (
     <li
       className={cn(
-        "flex items-center gap-3 p-4 transition-opacity",
-        pending && "opacity-50"
+        "group relative flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-2",
+        pending && "pointer-events-none opacity-50"
       )}
     >
-      <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-      <Link href={`/doc/${id}`} className="min-w-0 flex-1">
-        <p className="truncate font-medium">{name}</p>
-        <p className="text-xs text-muted-foreground">
-          {new Date(createdAt).toLocaleDateString("es")}
+      <PageMark />
+
+      <Link href={`/doc/${id}`} className="min-w-0 flex-1 py-0.5">
+        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="tnum mt-0.5 font-mono text-xs text-muted">
+          {new Date(createdAt).toLocaleDateString("es", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })}
         </p>
+        <span className="absolute inset-0" aria-hidden />
       </Link>
 
-      <span
-        className={cn(
-          "rounded-full px-2 py-0.5 text-xs font-medium",
-          STATUS_COLOR[status]
-        )}
-      >
-        {STATUS_LABEL[status]}
-      </span>
+      <StatusChip status={status} />
 
-      <div className="relative">
+      <div className="relative z-10">
         <button
           onClick={() => setMenuOpen((v) => !v)}
-          className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Acciones"
+          className="rounded p-2 text-muted transition-colors hover:bg-surface hover:text-ink"
+          aria-label={`Acciones de ${name}`}
+          aria-expanded={menuOpen}
         >
           <MoreVertical className="h-4 w-4" />
         </button>
+
         {menuOpen && (
           <>
             <div
               className="fixed inset-0 z-10"
               onClick={() => setMenuOpen(false)}
             />
-            <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border bg-background p-1 shadow-lg">
+            <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-line bg-surface p-1 shadow-pop">
               <MenuItem icon={<Download />} onClick={download}>
                 Descargar
               </MenuItem>
@@ -127,6 +109,39 @@ export function DocumentRow({
         )}
       </div>
     </li>
+  );
+}
+
+/** Hoja de papel con esquina doblada — más específica que un icono genérico. */
+function PageMark() {
+  return (
+    <svg
+      viewBox="0 0 28 32"
+      className="h-8 w-7 shrink-0 text-line-strong"
+      aria-hidden="true"
+    >
+      <path
+        d="M1 1h17l9 9v21H1z"
+        fill="rgb(var(--surface))"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18 1v9h9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6 17h14M6 21h14M6 25h9"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        opacity="0.55"
+      />
+    </svg>
   );
 }
 
@@ -145,8 +160,8 @@ function MenuItem({
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 rounded px-2 py-2 text-sm hover:bg-muted [&>svg]:h-4 [&>svg]:w-4",
-        danger && "text-red-600"
+        "flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-sm transition-colors hover:bg-surface-2 [&>svg]:h-4 [&>svg]:w-4",
+        danger ? "text-danger" : "text-ink"
       )}
     >
       {icon}

@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createFolder } from "@/app/drive/actions";
 import { FolderPlus } from "lucide-react";
+import { Spinner } from "@/components/spinner";
 
 export function NewFolderButton() {
   const router = useRouter();
@@ -22,9 +23,9 @@ export function NewFolderButton() {
     <button
       onClick={create}
       disabled={pending}
-      className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60"
+      className="inline-flex h-10 items-center gap-2 rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
     >
-      <FolderPlus className="h-4 w-4" /> Carpeta
+      {pending ? <Spinner /> : <FolderPlus className="h-4 w-4" />} Carpeta
     </button>
   );
 }

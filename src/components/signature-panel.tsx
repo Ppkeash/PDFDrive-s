@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Spinner } from "@/components/spinner";
+import { StatusChip } from "@/components/status-chip";
 import {
   BadgeCheck,
   Download,
@@ -11,14 +12,10 @@ import {
   Plus,
   ShieldCheck,
   Trash2,
-  Users,
 } from "lucide-react";
+import type { DocStatus } from "@/types";
 
-type Field = {
-  id: string;
-  page: number;
-  assigned_email: string | null;
-};
+type Field = { id: string; page: number; assigned_email: string | null };
 type Signer = {
   signer_id: string | null;
   signed_at: string;
@@ -59,8 +56,8 @@ export function SignaturePanel({
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function addField() {
-    const email = window.prompt("Email del firmante para este campo");
+  function addField() {
+    const email = window.prompt("Email de quien debe firmar este campo");
     if (!email) return;
     startTransition(async () => {
       const { error } = await supabase.from("signature_fields").insert({
@@ -93,7 +90,7 @@ export function SignaturePanel({
     });
     setSigning(false);
     if (error || data?.error) {
-      setError(data?.error ?? error?.message ?? "Error al firmar");
+      setError(data?.error ?? error?.message ?? "No se pudo firmar.");
       return;
     }
     router.refresh();
@@ -118,51 +115,51 @@ export function SignaturePanel({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Estado */}
-      <div>
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-          <PenLine className="h-4 w-4" /> Firma
-        </h2>
-        <StatusBadge status={status} />
-      </div>
+    <div className="flex flex-col gap-7">
+      <header className="flex items-center justify-between gap-3">
+        <SectionLabel>Estado</SectionLabel>
+        <StatusChip status={status as DocStatus} />
+      </header>
 
       {/* Campos de firma */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Campos de firma
-          </h3>
+      <section className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <SectionLabel>Campos de firma</SectionLabel>
           {isOwner && !signedPath && (
             <button
               onClick={addField}
               disabled={pending}
-              className="inline-flex items-center gap-1 text-xs text-primary"
+              className="inline-flex items-center gap-1 text-xs font-medium text-seal transition-opacity hover:opacity-80 disabled:opacity-50"
             >
-              <Plus className="h-3 w-3" /> Añadir
+              <Plus className="h-3.5 w-3.5" /> Añadir
             </button>
           )}
         </div>
+
         {fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted">
             {isOwner
-              ? "Añade un campo y asigna un firmante por email."
+              ? "Sin campos. Añade uno y asigna quién debe firmarlo."
               : "Sin campos definidos."}
           </p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="flex flex-col gap-1">
             {fields.map((f) => (
               <li
                 key={f.id}
-                className="flex items-center justify-between rounded-lg border p-2 text-sm"
+                className="flex items-center justify-between gap-2 rounded border border-line bg-surface-2 px-3 py-2"
               >
-                <span className="truncate">
-                  Pág. {f.page} · {f.assigned_email ?? "sin asignar"}
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  <span className="tnum font-mono text-xs text-muted">
+                    p.{f.page}
+                  </span>{" "}
+                  {f.assigned_email ?? "sin asignar"}
                 </span>
                 {isOwner && !signedPath && (
                   <button
                     onClick={() => removeField(f.id)}
-                    className="text-muted-foreground hover:text-red-600"
+                    aria-label="Quitar campo"
+                    className="shrink-0 rounded p-1 text-muted transition-colors hover:text-danger"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -171,132 +168,173 @@ export function SignaturePanel({
             ))}
           </ul>
         )}
-      </div>
+      </section>
 
       {/* Acciones */}
-      <div className="space-y-2">
-        {!alreadySigned && (
+      <section className="flex flex-col gap-2">
+        {alreadySigned ? (
+          <p className="flex items-center gap-2 rounded border border-ok/25 bg-ok-soft px-3 py-2.5 text-sm font-medium text-ok">
+            <BadgeCheck className="h-4 w-4 shrink-0" /> Ya firmaste este
+            documento.
+          </p>
+        ) : (
           <button
             onClick={sign}
             disabled={signing}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             {signing ? <Spinner /> : <PenLine className="h-4 w-4" />}
-            {signing ? "Firmando..." : "Firmar documento"}
+            {signing ? "Firmando…" : "Firmar documento"}
           </button>
         )}
-        {alreadySigned && (
-          <p className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-            <BadgeCheck className="h-4 w-4" /> Ya firmaste este documento.
+
+        {signedPath && (
+          <>
+            <button
+              onClick={downloadSigned}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded border border-line-strong bg-surface px-4 text-sm font-medium transition-colors hover:bg-surface-2"
+            >
+              <Download className="h-4 w-4" /> Descargar firmado
+            </button>
+            <button
+              onClick={runVerify}
+              disabled={verifying}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded border border-line-strong bg-surface px-4 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
+            >
+              {verifying ? <Spinner /> : <ShieldCheck className="h-4 w-4" />}
+              {verifying ? "Verificando…" : "Verificar firma"}
+            </button>
+          </>
+        )}
+
+        {error && (
+          <p
+            role="alert"
+            className="rounded border-l-2 border-danger bg-surface-2 px-3 py-2 text-sm text-danger"
+          >
+            {error}
           </p>
         )}
-
-        {signedPath && (
-          <button
-            onClick={downloadSigned}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium"
-          >
-            <Download className="h-4 w-4" /> Descargar firmado
-          </button>
-        )}
-
-        {signedPath && (
-          <button
-            onClick={runVerify}
-            disabled={verifying}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-60"
-          >
-            {verifying ? <Spinner /> : <ShieldCheck className="h-4 w-4" />}
-            {verifying ? "Verificando..." : "Verificar firma"}
-          </button>
-        )}
-      </div>
-
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      </section>
 
       {verify && <VerifyBox result={verify} />}
 
-      {/* Firmantes */}
-      <div>
-        <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Users className="h-4 w-4" /> Firmantes ({signers.length})
-        </h3>
+      {/* Firmantes: el acta propiamente dicha. */}
+      <section className="flex flex-col gap-2.5">
+        <SectionLabel>Firmantes ({signers.length})</SectionLabel>
         {signers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nadie ha firmado aún.</p>
+          <p className="text-sm text-muted">Nadie ha firmado todavía.</p>
         ) : (
-          <ul className="space-y-1">
+          <ol className="flex flex-col gap-2">
             {signers.map((s, i) => (
-              <li key={i} className="rounded-lg border p-2 text-xs">
-                <div className="flex items-center gap-1 font-medium text-green-700">
-                  <BadgeCheck className="h-3.5 w-3.5" /> Firmado
+              <li
+                key={i}
+                className="rounded border border-line bg-surface-2 p-3"
+              >
+                <div className="flex items-center gap-1.5 text-sm font-medium text-ok">
+                  <BadgeCheck className="h-4 w-4 shrink-0" /> Firmado
                 </div>
-                <div className="text-muted-foreground">
-                  {new Date(s.signed_at).toLocaleString("es")}
-                </div>
-                {s.cert_subject && (
-                  <div className="truncate text-muted-foreground">
-                    {s.cert_subject}
-                  </div>
-                )}
+                <dl className="mt-2 flex flex-col gap-1">
+                  <Row term="Fecha">
+                    {new Date(s.signed_at).toLocaleString("es", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </Row>
+                  {s.cert_subject && (
+                    <Row term="Certificado">{s.cert_subject}</Row>
+                  )}
+                </dl>
               </li>
             ))}
-          </ul>
+          </ol>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    borrador: "bg-muted text-muted-foreground",
-    en_firma: "bg-amber-100 text-amber-700",
-    firmado: "bg-green-100 text-green-700",
-    archivado: "bg-muted text-muted-foreground",
-  };
-  const label: Record<string, string> = {
-    borrador: "Borrador",
-    en_firma: "En firma",
-    firmado: "Firmado",
-    archivado: "Archivado",
-  };
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-micro uppercase text-muted">{children}</h2>;
+}
+
+/** Par dato/valor del acta: el valor siempre en mono. */
+function Row({
+  term,
+  children,
+}: {
+  term: string;
+  children: React.ReactNode;
+}) {
   return (
-    <span
-      className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${map[status] ?? map.borrador}`}
-    >
-      {label[status] ?? status}
-    </span>
+    <div className="flex gap-2 text-xs">
+      <dt className="w-20 shrink-0 text-muted">{term}</dt>
+      <dd className="tnum min-w-0 flex-1 break-all font-mono text-ink">
+        {children}
+      </dd>
+    </div>
   );
 }
 
 function VerifyBox({ result }: { result: VerifyResult }) {
   if (result.error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-        Error: {result.error}
-      </div>
+      <p
+        role="alert"
+        className="rounded border-l-2 border-danger bg-surface-2 px-3 py-2 text-sm text-danger"
+      >
+        {result.error}
+      </p>
     );
   }
+
+  const valid = result.valid;
   return (
-    <div
-      className={`rounded-lg border p-3 text-sm ${
-        result.valid
-          ? "border-green-200 bg-green-50 text-green-800"
-          : "border-amber-200 bg-amber-50 text-amber-800"
+    <section
+      className={`rounded border p-3.5 ${
+        valid
+          ? "border-ok/25 bg-ok-soft"
+          : "border-wait/30 bg-wait-soft"
       }`}
     >
-      <p className="mb-1 font-semibold">
-        {result.valid ? "✓ Documento válido" : "⚠ Verificación con reparos"}
+      <p
+        className={`flex items-center gap-2 text-sm font-semibold ${
+          valid ? "text-ok" : "text-wait"
+        }`}
+      >
+        <ShieldCheck className="h-4 w-4 shrink-0" />
+        {valid ? "Documento válido" : "Verificación con reparos"}
       </p>
-      {result.reason && <p>{result.reason}</p>}
-      <ul className="mt-1 space-y-0.5 text-xs">
-        <li>Firma detectada: {result.hasSignature ? "sí" : "no"}</li>
-        <li>Integridad (hash): {result.hashMatch ? "ok" : "no coincide"}</li>
-        <li>Nº de firmas: {result.signatureCount ?? 0}</li>
-      </ul>
-      {result.note && (
-        <p className="mt-2 text-xs text-muted-foreground">{result.note}</p>
+
+      {result.reason && (
+        <p className="mt-1.5 text-sm text-muted">{result.reason}</p>
       )}
+
+      <dl className="mt-3 flex flex-col gap-1">
+        <Check label="Firma detectada" ok={!!result.hasSignature} />
+        <Check label="Integridad (hash)" ok={!!result.hashMatch} />
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <dt className="text-muted">Nº de firmas</dt>
+          <dd className="tnum font-mono">{result.signatureCount ?? 0}</dd>
+        </div>
+      </dl>
+
+      {result.note && (
+        <p className="mt-3 border-t border-line pt-2.5 text-xs text-muted">
+          {result.note}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function Check({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <dt className="text-muted">{label}</dt>
+      <dd className={`font-mono font-medium ${ok ? "text-ok" : "text-danger"}`}>
+        {ok ? "sí" : "no"}
+      </dd>
     </div>
   );
 }

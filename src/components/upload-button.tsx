@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { FileUp, Loader2 } from "lucide-react";
+import { Spinner } from "@/components/spinner";
+import { FileUp } from "lucide-react";
 
 const ACCEPTED = ".pdf,.docx";
 const MIME_OK = [
@@ -24,7 +25,7 @@ export function UploadButton() {
     setError(null);
 
     if (!MIME_OK.includes(file.type)) {
-      setError("Solo se permiten PDF o .docx");
+      setError("Solo se permiten archivos PDF o .docx");
       return;
     }
 
@@ -33,7 +34,7 @@ export function UploadButton() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sesión expirada");
+      if (!user) throw new Error("Tu sesión caducó. Vuelve a entrar.");
 
       const path = `${user.id}/${crypto.randomUUID()}-${file.name}`;
       const { error: upErr } = await supabase.storage
@@ -52,7 +53,9 @@ export function UploadButton() {
 
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al subir");
+      setError(
+        err instanceof Error ? err.message : "No se pudo subir el archivo."
+      );
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -60,7 +63,7 @@ export function UploadButton() {
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-1.5">
       <input
         ref={inputRef}
         type="file"
@@ -71,16 +74,16 @@ export function UploadButton() {
       <button
         onClick={() => inputRef.current?.click()}
         disabled={busy}
-        className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+        className="inline-flex h-10 items-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
       >
-        {busy ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <FileUp className="h-4 w-4" />
-        )}
-        Subir
+        {busy ? <Spinner /> : <FileUp className="h-4 w-4" />}
+        {busy ? "Subiendo…" : "Subir documento"}
       </button>
-      {error && <span className="text-xs text-red-500">{error}</span>}
+      {error && (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      )}
     </div>
   );
 }

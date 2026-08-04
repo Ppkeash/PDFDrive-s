@@ -242,6 +242,27 @@ create policy "avatars lectura pública" on storage.objects for select
 create policy "avatars dueño escribe" on storage.objects for insert
   with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+-- Compartidos (firmante/lector) también deben poder leer el archivo, no solo
+-- el dueño. Sin esto, createSignedUrl falla con "permission denied" para
+-- cualquiera que no sea el owner y el flujo de "compartir" queda roto.
+create policy "originals compartido lee" on storage.objects for select
+  using (
+    bucket_id = 'originals' and exists (
+      select 1 from documents d
+      where d.storage_path = storage.objects.name
+        and has_document_access(d.id)
+    )
+  );
+
+create policy "signed compartido lee" on storage.objects for select
+  using (
+    bucket_id = 'signed' and exists (
+      select 1 from documents d
+      where d.signed_path = storage.objects.name
+        and has_document_access(d.id)
+    )
+  );
+
 -- =====================================================================
 -- Realtime: publicar cambios de las tablas colaborativas.
 -- =====================================================================

@@ -2,34 +2,145 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =====================================================================
+   FirmaDrive — sistema de diseño
+   Concepto: registro notarial / grabado de seguridad.
+   Neutros cálidos sesgados hacia el acento (lacre). Verde y ámbar quedan
+   reservados para estado (firmado / en firma), nunca como acento.
+   Tokens en canales RGB para permitir modificadores de opacidad.
+   ===================================================================== */
+
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --border: 214 32% 91%;
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
+  --paper: 246 243 242;
+  --surface: 255 255 255;
+  --surface-2: 250 247 246;
+  --ink: 28 20 22;
+  --muted: 110 95 99;
+  --line: 228 220 221;
+  --line-strong: 209 197 199;
+
+  --seal: 126 43 60;
+  --seal-ink: 255 255 255;
+  --seal-soft: 242 228 231;
+
+  --ok: 46 125 91;
+  --ok-soft: 224 240 232;
+  --wait: 151 105 15;
+  --wait-soft: 248 236 214;
+  --danger: 168 44 44;
+
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --border: 217 33% 23%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
+    --paper: 19 16 17;
+    --surface: 27 22 24;
+    --surface-2: 34 28 30;
+    --ink: 240 233 234;
+    --muted: 162 144 149;
+    --line: 45 36 39;
+    --line-strong: 63 51 55;
+
+    --seal: 216 115 127;
+    --seal-ink: 32 12 17;
+    --seal-soft: 46 27 32;
+
+    --ok: 92 196 154;
+    --ok-soft: 20 46 38;
+    --wait: 223 165 60;
+    --wait-soft: 52 39 17;
+    --danger: 232 114 114;
+
+    color-scheme: dark;
   }
 }
 
-* {
-  border-color: hsl(var(--border));
+/* El toggle explícito gana sobre la preferencia del sistema, en ambos sentidos. */
+:root[data-theme="light"] {
+  --paper: 246 243 242;
+  --surface: 255 255 255;
+  --surface-2: 250 247 246;
+  --ink: 28 20 22;
+  --muted: 110 95 99;
+  --line: 228 220 221;
+  --line-strong: 209 197 199;
+
+  --seal: 126 43 60;
+  --seal-ink: 255 255 255;
+  --seal-soft: 242 228 231;
+
+  --ok: 46 125 91;
+  --ok-soft: 224 240 232;
+  --wait: 151 105 15;
+  --wait-soft: 248 236 214;
+  --danger: 168 44 44;
+
+  color-scheme: light;
 }
 
-body {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  -webkit-font-smoothing: antialiased;
+:root[data-theme="dark"] {
+  --paper: 19 16 17;
+  --surface: 27 22 24;
+  --surface-2: 34 28 30;
+  --ink: 240 233 234;
+  --muted: 162 144 149;
+  --line: 45 36 39;
+  --line-strong: 63 51 55;
+
+  --seal: 216 115 127;
+  --seal-ink: 32 12 17;
+  --seal-soft: 46 27 32;
+
+  --ok: 92 196 154;
+  --ok-soft: 20 46 38;
+  --wait: 223 165 60;
+  --wait-soft: 52 39 17;
+  --danger: 232 114 114;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--line));
+  }
+
+  body {
+    background: rgb(var(--paper));
+    color: rgb(var(--ink));
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Fraunces variable: menos "wonk", algo de suavidad. Decisión, no default. */
+  h1,
+  h2,
+  .font-display {
+    font-variation-settings: "SOFT" 20, "WONK" 0;
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+
+  /* Foco visible y consistente en todo lo interactivo. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid rgb(var(--seal));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Los datos criptográficos siempre alinean en columna. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

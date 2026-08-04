@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ShareDialog } from "@/components/share-dialog";
 import { SignaturePanel } from "@/components/signature-panel";
-import { ArrowLeft, Download, FileText, Users } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 
 export default async function DocumentPage({
   params,
@@ -57,23 +57,40 @@ export default async function DocumentPage({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between gap-3 border-b p-4">
+      <header className="flex items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
-          <Link href="/drive" className="text-muted-foreground">
-            <ArrowLeft className="h-5 w-5" />
+          <Link
+            href="/drive"
+            aria-label="Volver a mis documentos"
+            className="shrink-0 rounded p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <ArrowLeft className="h-4 w-4" />
           </Link>
-          <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-          <h1 className="truncate font-semibold">{doc.name}</h1>
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-lg font-semibold">
+              {doc.name}
+            </h1>
+            {doc.current_hash && (
+              <p
+                className="tnum truncate font-mono text-xs text-muted"
+                title={doc.current_hash}
+              >
+                SHA-256 {doc.current_hash.slice(0, 16)}…
+              </p>
+            )}
+          </div>
         </div>
-        <div className="flex shrink-0 gap-2">
+
+        <div className="flex shrink-0 items-center gap-2">
           {signed?.signedUrl && (
             <a
               href={signed.signedUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
+              className="inline-flex h-10 items-center gap-2 rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
             >
-              <Download className="h-4 w-4" /> Descargar
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Descargar</span>
             </a>
           )}
           {isOwner && <ShareDialog documentId={doc.id} />}
@@ -82,27 +99,28 @@ export default async function DocumentPage({
 
       <div className="flex flex-1 flex-col lg:flex-row">
         {/* Visor */}
-        <div className="flex-1 bg-muted/40 p-4">
+        <div className="flex-1 bg-paper p-4 sm:p-5">
           {isPdf && signed?.signedUrl ? (
             <iframe
               src={signed.signedUrl}
-              className="h-[70vh] w-full rounded-lg border bg-white lg:h-full"
-              title={doc.name}
+              className="h-[70vh] w-full rounded-lg border border-line bg-white lg:h-full"
+              title={`Vista previa de ${doc.name}`}
             />
           ) : (
-            <div className="flex h-full min-h-[50vh] flex-col items-center justify-center rounded-lg border border-dashed text-center">
-              <FileText className="mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">Vista previa no disponible</p>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                Los .docx se previsualizarán tras la conversión a PDF (Fase 4).
-                Usa “Descargar”.
+            <div className="flex h-full min-h-[50vh] flex-col items-center justify-center rounded-lg border border-dashed border-line-strong bg-surface p-6 text-center">
+              <h2 className="font-display text-lg font-semibold">
+                Sin vista previa
+              </h2>
+              <p className="mt-1.5 max-w-xs text-sm text-muted">
+                Los .docx se podrán previsualizar cuando se active la conversión
+                a PDF. Mientras tanto, descárgalo.
               </p>
             </div>
           )}
         </div>
 
-        {/* Panel lateral */}
-        <aside className="w-full shrink-0 border-t p-4 lg:w-80 lg:border-l lg:border-t-0">
+        {/* Acta lateral */}
+        <aside className="w-full shrink-0 border-t border-line bg-surface p-5 lg:w-[21rem] lg:border-l lg:border-t-0">
           {isPdf ? (
             <SignaturePanel
               documentId={doc.id}
@@ -114,36 +132,35 @@ export default async function DocumentPage({
               alreadySigned={alreadySigned}
             />
           ) : (
-            <p className="text-sm text-muted-foreground">
-              La firma digital aplica a PDF. Convierte el .docx (Fase 4).
+            <p className="text-sm text-muted">
+              La firma digital solo aplica a PDF.
             </p>
           )}
 
-          {/* Accesos */}
-          <div className="mt-6 border-t pt-4">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-              <Users className="h-4 w-4" /> Accesos
+          <section className="mt-7 border-t border-line pt-5">
+            <h2 className="text-micro uppercase text-muted">
+              Con acceso ({shares?.length ?? 0})
             </h2>
             {!shares || shares.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aún no has compartido este documento.
+              <p className="mt-2.5 text-sm text-muted">
+                Solo tú puedes ver este documento.
               </p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="mt-2.5 flex flex-col gap-1">
                 {shares.map((s) => (
                   <li
                     key={s.email}
-                    className="flex items-center justify-between rounded-lg border p-2 text-sm"
+                    className="flex items-center justify-between gap-2 rounded border border-line bg-surface-2 px-3 py-2"
                   >
-                    <span className="truncate">{s.email}</span>
-                    <span className="ml-2 shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground">
+                    <span className="min-w-0 truncate text-sm">{s.email}</span>
+                    <span className="shrink-0 text-xs capitalize text-muted">
                       {s.role}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </section>
         </aside>
       </div>
     </div>

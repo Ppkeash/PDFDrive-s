@@ -2,13 +2,12 @@ import { RowSkeleton } from "@/components/spinner";
 
 export default function Loading() {
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-6">
-      <div className="mb-6 h-8 w-48 animate-pulse rounded bg-muted" />
-      <div className="divide-y rounded-xl border">
+    <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
+      <div className="h-9 w-56 animate-pulse rounded bg-surface-2" />
+      <div className="mt-2 h-4 w-40 animate-pulse rounded bg-surface-2" />
+      <div className="mt-6 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="animate-pulse">
-            <RowSkeleton />
-          </div>
+          <RowSkeleton key={i} />
         ))}
       </div>
     </div>
