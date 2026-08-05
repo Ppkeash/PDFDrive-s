@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import { Spinner } from "@/components/spinner";
 import { cn } from "@/lib/utils";
@@ -114,12 +114,26 @@ export function PdfViewer({
     pendingRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [pendingPage]);
 
+  // El enlace firmado lleva un token distinto cada vez que el servidor
+  // reenvía la página, así que `url` cambia en cada refresco aunque el archivo
+  // sea el mismo. Recargar el PDF por eso hacía parpadear el visor cada vez que
+  // se colocaba un campo. Lo que identifica al archivo es su ruta.
+  const urlKey = useMemo(() => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return url;
+    }
+  }, [url]);
+  const urlRef = useRef(url);
+  urlRef.current = url;
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    const task = pdfjs.getDocument({ url });
+    const task = pdfjs.getDocument({ url: urlRef.current });
     task.promise
       .then(async (pdf) => {
         if (cancelled) return;
@@ -146,7 +160,7 @@ export function PdfViewer({
       cancelled = true;
       task.destroy().catch(() => {});
     };
-  }, [url]);
+  }, [urlKey]);
 
   const recomputeScale = useCallback(() => {
     const el = containerRef.current;
