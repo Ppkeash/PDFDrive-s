@@ -17,12 +17,14 @@ function explain(raw: string, status?: number): string {
     return "Demasiados intentos seguidos. Espera un minuto y vuelve a probar.";
   if (m.includes("invalid login credentials"))
     return "Email o contraseña incorrectos.";
-  if (m.includes("already registered") || m.includes("already been registered"))
-    return "Ya hay una cuenta con ese email. Inicia sesión.";
-  if (m.includes("password should be at least"))
-    return "La contraseña necesita al menos 6 caracteres.";
+  // El registro está cerrado: entrar con una cuenta de Google desconocida
+  // intenta crear usuario y el servidor lo rechaza.
+  if (m.includes("signups not allowed") || m.includes("signup_disabled"))
+    return "Esa cuenta no tiene acceso. Pídele al administrador que te la cree.";
+  if (m.includes("email logins are disabled"))
+    return "El acceso con contraseña está desactivado ahora mismo.";
   if (m.includes("provider is not enabled") || m.includes("unsupported provider"))
-    return "El acceso con Google todavía no está configurado.";
+    return "El acceso con Google no está configurado.";
   if (m.includes("email address") && m.includes("invalid"))
     return "Ese email no parece válido.";
   return raw;
@@ -33,32 +35,22 @@ export default function LoginPage() {
   const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setNotice(null);
 
-    const { data, error } =
-      mode === "signin"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     if (error) {
       setLoading(false);
       return setError(explain(error.message, error.status));
-    }
-
-    // Con la confirmación por email desactivada, el registro ya devuelve
-    // sesión y entramos directo. Si algún día se reactiva, avisamos.
-    if (mode === "signup" && !data.session) {
-      setLoading(false);
-      return setNotice("Cuenta creada. Revisa tu email para confirmarla.");
     }
 
     router.push("/drive");
@@ -73,8 +65,6 @@ export default function LoginPage() {
     });
     if (error) setError(explain(error.message, error.status));
   }
-
-  const signin = mode === "signin";
 
   return (
     <main className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
@@ -107,12 +97,10 @@ export default function LoginPage() {
           </div>
 
           <h1 className="mt-10 font-display text-3xl font-semibold lg:mt-0">
-            {signin ? "Entrar" : "Crear cuenta"}
+            Entrar
           </h1>
           <p className="mt-2 text-sm text-muted">
-            {signin
-              ? "Accede para ver y firmar tus documentos."
-              : "Se crea al instante, sin confirmar email."}
+            Accede para ver y firmar tus documentos.
           </p>
 
           <form onSubmit={handleEmail} className="mt-8 flex flex-col gap-4">
@@ -131,8 +119,8 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={setPassword}
-              autoComplete={signin ? "current-password" : "new-password"}
-              placeholder={signin ? "••••••••" : "Mínimo 6 caracteres"}
+              autoComplete="current-password"
+              placeholder="••••••••"
               minLength={6}
             />
 
@@ -142,7 +130,7 @@ export default function LoginPage() {
               className="mt-1 inline-flex h-11 items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {loading && <Spinner />}
-              {loading ? "Un momento…" : signin ? "Entrar" : "Crear cuenta"}
+              {loading ? "Un momento…" : "Entrar"}
             </button>
           </form>
 
@@ -170,24 +158,9 @@ export default function LoginPage() {
               {error}
             </p>
           )}
-          {notice && (
-            <p className="mt-5 rounded border-l-2 border-ok bg-ok-soft px-3 py-2 text-sm text-ok">
-              {notice}
-            </p>
-          )}
-
-          <p className="mt-8 text-sm text-muted">
-            {signin ? "¿Todavía no tienes cuenta?" : "¿Ya tienes cuenta?"}{" "}
-            <button
-              onClick={() => {
-                setMode(signin ? "signup" : "signin");
-                setError(null);
-                setNotice(null);
-              }}
-              className="font-medium text-seal underline decoration-seal/30 underline-offset-4 hover:decoration-seal"
-            >
-              {signin ? "Créala aquí" : "Entra aquí"}
-            </button>
+          <p className="mt-8 border-t border-line pt-5 text-sm text-muted">
+            El acceso es por invitación: las cuentas las crea quien administra
+            el drive.
           </p>
         </div>
       </section>

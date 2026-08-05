@@ -177,8 +177,15 @@ enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
-# Allow/disallow new user signups to your project.
-enable_signup = true
+# Registro cerrado a propósito. Las cuentas las crea el administrador desde el
+# panel de Supabase.
+#
+# Con la confirmación por email desactivada (ver [auth.email]), dejar el
+# registro abierto permitiría que cualquiera creara una cuenta con un correo ya
+# invitado a un documento y se hiciera con el acceso, porque nadie comprueba
+# que sea el dueño real de ese correo. Cerrando el registro, ese camino
+# desaparece sin necesidad de montar un SMTP.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -222,7 +229,10 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
+# DEBE quedarse en true. En el proyecto alojado esta opción no limita el
+# registro: apaga el proveedor de email por completo, y el login con
+# contraseña empieza a responder "Email logins are disabled".
+# Quien cierra el registro es [auth].enable_signup.
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
