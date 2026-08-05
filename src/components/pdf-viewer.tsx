@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import { Spinner } from "@/components/spinner";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { Mail, X } from "lucide-react";
 
 // El worker se sirve desde nuestro dominio (lo copia scripts/copy-pdf-worker.mjs).
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -423,6 +423,13 @@ export function PdfViewer({
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(v, Math.max(min, max)));
 
+/** Solo la parte local del correo: la etiqueta es un marcador, no el dato completo. */
+function shortLabel(label?: string) {
+  if (!label) return "";
+  const at = label.indexOf("@");
+  return at > 0 ? label.slice(0, at) : label;
+}
+
 function Box({
   label,
   image,
@@ -464,9 +471,16 @@ function Box({
       onPointerDown={(e) => editable && onStart(e, "move")}
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "absolute flex touch-none select-none items-center justify-center rounded-sm border-2 border-dashed text-center",
-        mine ? "border-seal" : "border-line-strong",
-        image ? "bg-seal/5" : mine ? "bg-seal/10" : "bg-ink/5",
+        "absolute flex touch-none select-none items-center justify-center rounded-sm border text-center",
+        // Sin relleno ni recuadro grueso: es un marcador de sitio, no un
+        // tapón sobre el PDF. El correo ya no se escribe adentro -- entero
+        // se veía sucio -- va en una etiqueta pequeña que sobresale del borde.
+        image
+          ? cn("border-2 border-dashed bg-seal/5", mine ? "border-seal" : "border-line-strong")
+          : cn(
+              "border-dashed bg-transparent",
+              mine ? "border-seal/60" : "border-line-strong/70"
+            ),
         editable && (dragging ? "cursor-grabbing" : "cursor-grab"),
         dragging && "ring-2 ring-seal/40"
       )}
@@ -481,12 +495,16 @@ function Box({
         />
       ) : (
         <span
+          title={label}
           className={cn(
-            "pointer-events-none truncate px-1.5 text-[10px] font-medium",
-            mine ? "text-seal" : "text-muted"
+            "pointer-events-none absolute -top-2.5 left-1.5 flex max-w-[85%] items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[9px] font-medium shadow-card",
+            mine
+              ? "border-seal bg-seal text-seal-ink"
+              : "border-line-strong bg-surface text-muted"
           )}
         >
-          {label}
+          <Mail className="h-2.5 w-2.5 shrink-0" />
+          {shortLabel(label)}
         </span>
       )}
 

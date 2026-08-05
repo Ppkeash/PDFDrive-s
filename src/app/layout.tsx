@@ -37,6 +37,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Declara ambos esquemas explícitamente: sin esto, algunos navegadores
+  // (sobre todo Edge/Android con "oscurecer sitios web" activado) reinvierten
+  // colores puestos a mano como bg-white, pensando que la página no soporta
+  // modo oscuro por su cuenta.
+  colorScheme: "light dark",
 };
 
 // Aplica el tema guardado antes del primer pintado para evitar parpadeo.

@@ -62,9 +62,10 @@ type VerifySignature = {
 
 /** Lo que se ejecutará si el usuario confirma el aviso. */
 type Intent = {
-  /** Si al hacerlo el documento queda cerrado y sellado. */
-  seals: boolean;
+  kind: "sign" | "seal" | "retract";
   run: () => Promise<unknown>;
+  /** Para el aviso de "deshacer": a quién le pertenecía la rúbrica. */
+  fieldLabel?: string | null;
 };
 
 type VerifyResult = {
@@ -249,6 +250,28 @@ export function DocumentWorkspace({
     return true;
   }
 
+  /**
+   * Quita una rúbrica ya estampada (se firmó mal) y reabre el campo. Solo
+   * vale mientras el documento no esté sellado -- una vez cerrado, tocar el
+   * PDF rompería el sello criptográfico.
+   */
+  async function retractField(fieldId: string) {
+    setBusy(true);
+    setError(null);
+    const { data, error } = await supabase.functions.invoke("sign-pdf", {
+      body: { documentId, fieldId, retract: true },
+    });
+    setBusy(false);
+
+    if (error || data?.error) {
+      setError(data?.error ?? error?.message ?? "No se pudo deshacer la firma.");
+      return false;
+    }
+    setVerify(null);
+    refresh();
+    return true;
+  }
+
   /** Cierra el documento: sella lo firmado y ya no admite cambios. */
   async function sealDocument() {
     setBusy(true);
@@ -284,7 +307,7 @@ export function DocumentWorkspace({
       // Firmar es definitivo: se avisa antes de estampar nada. Pero firmar no
       // cierra el documento — eso es una decisión aparte.
       setPadOpen(false);
-      setIntent({ seals: false, run: () => sign(signableField.id, png) });
+      setIntent({ kind: "sign", run: () => sign(signableField.id, png) });
       return;
     }
 
@@ -374,7 +397,7 @@ export function DocumentWorkspace({
                 Cancelar
               </button>
               <button
-                onClick={() => setIntent({ seals: false, run: placePending })}
+                onClick={() => setIntent({ kind: "sign", run: placePending })}
                 disabled={busy}
                 className="inline-flex h-9 items-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
               >
@@ -544,6 +567,28 @@ export function DocumentWorkspace({
                     >
                       {f.signed ? "Firmado" : "Pendiente"}
                     </span>
+                    {/* Se firmó mal: quitar la rúbrica y volver a empezar.
+                        Solo mientras el documento siga abierto, y solo quien
+                        firmó ahí o quien manda en el documento. */}
+                    {f.signed &&
+                      !sealed &&
+                      (canEditFields ||
+                        f.assigned_email?.trim().toLowerCase() ===
+                          userEmail.toLowerCase()) && (
+                        <button
+                          onClick={() =>
+                            setIntent({
+                              kind: "retract",
+                              fieldLabel: f.assigned_email,
+                              run: () => retractField(f.id),
+                            })
+                          }
+                          disabled={busy}
+                          className="shrink-0 text-xs font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-danger disabled:opacity-50"
+                        >
+                          Deshacer
+                        </button>
+                      )}
                   </li>
                 ))}
               </ul>
@@ -573,7 +618,7 @@ export function DocumentWorkspace({
             {!sealed && allSigned && canEdit(role) && (
               <>
                 <button
-                  onClick={() => setIntent({ seals: true, run: sealDocument })}
+                  onClick={() => setIntent({ kind: "seal", run: sealDocument })}
                   className="mt-1 inline-flex h-11 items-center justify-center gap-2 rounded border border-seal bg-seal-soft px-4 text-sm font-medium text-seal transition-colors hover:bg-seal hover:text-seal-ink"
                 >
                   <Lock className="h-4 w-4" /> Cerrar documento
@@ -710,12 +755,24 @@ export function DocumentWorkspace({
       <ConfirmDialog
         open={!!intent}
         busy={busy}
-        title={intent?.seals ? "Vas a cerrar el documento" : "Vas a firmar"}
-        confirmLabel={intent?.seals ? "Cerrar y sellar" : "Sí, firmar"}
+        title={
+          intent?.kind === "seal"
+            ? "Vas a cerrar el documento"
+            : intent?.kind === "retract"
+              ? "Vas a deshacer una firma"
+              : "Vas a firmar"
+        }
+        confirmLabel={
+          intent?.kind === "seal"
+            ? "Cerrar y sellar"
+            : intent?.kind === "retract"
+              ? "Sí, deshacer"
+              : "Sí, firmar"
+        }
         onCancel={() => !busy && setIntent(null)}
         onConfirm={runIntent}
       >
-        {intent?.seals ? (
+        {intent?.kind === "seal" ? (
           <>
             <p>
               Con esto el documento queda <strong>sellado</strong>: nadie podrá
@@ -728,11 +785,25 @@ export function DocumentWorkspace({
               compártelo primero.
             </p>
           </>
+        ) : intent?.kind === "retract" ? (
+          <>
+            <p>
+              Se quita la rúbrica
+              {intent.fieldLabel ? (
+                <>
+                  {" "}
+                  de <strong>{intent.fieldLabel}</strong>
+                </>
+              ) : null}{" "}
+              del documento y el campo vuelve a quedar pendiente.
+            </p>
+            <p>Se puede volver a firmar cuando quieras.</p>
+          </>
         ) : (
           <>
             <p>
-              Tu firma queda estampada en el documento y no se puede quitar
-              después.
+              Tu firma queda estampada en el documento. Mientras no se cierre,
+              se puede deshacer y volver a firmar si algo salió mal.
             </p>
             <p>
               Esto <strong>no cierra</strong> el documento: seguirá abierto para

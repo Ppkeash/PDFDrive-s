@@ -19,7 +19,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { SignPdf } from "npm:@signpdf/signpdf@3";
 import { P12Signer } from "npm:@signpdf/signer-p12@3";
 import { pdflibAddPlaceholder } from "npm:@signpdf/placeholder-pdf-lib@3";
-import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1";
+import { PDFDocument } from "npm:pdf-lib@1";
 import { Buffer } from "node:buffer";
 
 const cors = {
@@ -73,9 +73,11 @@ Deno.serve(async (req) => {
 
     // `seal` cierra el documento sin estampar nada: es el acto definitivo, y
     // solo lo puede hacer quien manda en el documento (dueño o editor).
-    const { documentId, fieldId, rubric, seal } = await req.json();
+    // `retract` quita una rúbrica ya puesta (se firmó mal) para volver a
+    // firmar; solo vale mientras el documento siga abierto.
+    const { documentId, fieldId, rubric, seal, retract } = await req.json();
     if (!documentId) return json({ error: "Falta documentId" }, 400);
-    if (!seal && (!rubric || typeof rubric !== "string"))
+    if (!seal && !retract && (!rubric || typeof rubric !== "string"))
       return json({ error: "Falta la rúbrica" }, 400);
 
     const url = Deno.env.get("SUPABASE_URL")!;
@@ -142,11 +144,145 @@ Deno.serve(async (req) => {
 
     const { data: existing } = await admin
       .from("signatures")
-      .select("id, field_id, signer_id")
+      .select("id, field_id, signer_id, rubric_path")
       .eq("document_id", doc.id);
     const signedFieldIds = new Set(
       (existing ?? []).map((s) => s.field_id).filter(Boolean)
     );
+
+    // ---- Deshacer una firma ------------------------------------------------
+    // Aparte de todo lo demás: no reserva campo, no estampa. Reconstruye el
+    // PDF desde el original y reestampa solo las rúbricas que siguen en pie
+    // (por eso cada una se guarda por separado en el bucket `rubrics` al
+    // firmar -- una vez quemada en el PDF anterior no hay forma de borrarla
+    // de ahí).
+    if (retract) {
+      const target = fieldId
+        ? (existing ?? []).find((s) => s.field_id === fieldId)
+        : (existing ?? []).find((s) => !s.field_id && s.signer_id === user.id);
+      if (!target)
+        return json({ error: "No hay ninguna firma que deshacer ahí." }, 404);
+
+      const canRetract = target.signer_id === user.id || canEditFields;
+      if (!canRetract)
+        return json(
+          { error: "No puedes deshacer la firma de otra persona." },
+          403
+        );
+
+      const { error: delErr } = await admin
+        .from("signatures")
+        .delete()
+        .eq("id", target.id);
+      if (delErr)
+        return json({ error: `No se pudo deshacer: ${delErr.message}` }, 500);
+
+      const stillSigned = (existing ?? []).filter((s) => s.id !== target.id);
+
+      const { data: origFile, error: origErr } = await admin.storage
+        .from("originals")
+        .download(doc.storage_path);
+      if (origErr || !origFile)
+        return json(
+          { error: `No se pudo leer el original: ${origErr?.message}` },
+          500
+        );
+
+      const rebuilt = await PDFDocument.load(
+        new Uint8Array(await origFile.arrayBuffer())
+      );
+      const rebuiltPages = rebuilt.getPages();
+
+      for (const s of stillSigned) {
+        // Firmas de antes de este cambio no tienen PNG guardado: se pierden
+        // al reconstruir, no hay de dónde recuperarlas.
+        if (!s.rubric_path) continue;
+        const { data: rubFile } = await admin.storage
+          .from("rubrics")
+          .download(s.rubric_path);
+        if (!rubFile) continue;
+
+        const f = s.field_id ? fields.find((x) => x.id === s.field_id) : null;
+        const t = f
+          ? { page: f.page, x: f.x, y: f.y, w: f.w, h: f.h }
+          : (() => {
+              const p = rebuiltPages[rebuiltPages.length - 1];
+              const { width } = p.getSize();
+              return {
+                page: rebuiltPages.length,
+                x: width - 220,
+                y: 60,
+                w: 170,
+                h: 55,
+              };
+            })();
+
+        const page =
+          rebuiltPages[Math.min(Math.max(t.page, 1), rebuiltPages.length) - 1];
+        const png = await rebuilt.embedPng(
+          new Uint8Array(await rubFile.arrayBuffer())
+        );
+        const fit = Math.min(t.w / png.width, t.h / png.height);
+        const dw = png.width * fit;
+        const dh = png.height * fit;
+        page.drawImage(png, {
+          x: t.x + (t.w - dw) / 2,
+          y: t.y + (t.h - dh) / 2,
+          width: dw,
+          height: dh,
+        });
+      }
+
+      let outPath: string | null = null;
+      let outHash: string | null = null;
+
+      if (stillSigned.length > 0) {
+        const outBytes = await rebuilt.save({ useObjectStreams: false });
+        outHash = await sha256Hex(outBytes);
+        outPath = `${doc.owner_id}/${doc.id}.pdf`;
+        const { error: upErr } = await admin.storage
+          .from("signed")
+          .upload(outPath, outBytes, {
+            contentType: "application/pdf",
+            upsert: true,
+          });
+        if (upErr)
+          return json({ error: `No se pudo guardar: ${upErr.message}` }, 500);
+      } else if (doc.signed_path) {
+        await admin.storage.from("signed").remove([doc.signed_path]);
+      }
+
+      if (target.rubric_path)
+        await admin.storage.from("rubrics").remove([target.rubric_path]);
+
+      const { error: updErr } = await admin
+        .from("documents")
+        .update({ signed_path: outPath, current_hash: outHash, status: "en_firma" })
+        .eq("id", doc.id);
+      if (updErr) console.error("documents.update:", updErr);
+
+      const ip =
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+      await admin.from("audit_log").insert({
+        document_id: doc.id,
+        actor_id: user.id,
+        action: "deshacer_firma",
+        ip,
+        metadata: {
+          field_id: target.field_id,
+          retracted_signer: target.signer_id,
+        },
+      });
+
+      return json({
+        ok: true,
+        sealed: false,
+        status: "en_firma",
+        remaining: fields.length - stillSigned.length,
+        signed_path: outPath,
+        hash: outHash,
+      });
+    }
 
     let field: Field | null = null;
 
@@ -234,6 +370,12 @@ Deno.serve(async (req) => {
     const pages = pdfDoc.getPages();
     const stamped = new Date();
 
+    // Id fijado de antemano: así la rúbrica se guarda en el bucket bajo el
+    // mismo id que la fila de `signatures`, y "deshacer firma" sabe qué PNG
+    // recuperar sin tener que hacer una vuelta extra a la base.
+    const sigId = crypto.randomUUID();
+    let rubricPath: string | null = null;
+
     if (!seal) {
       const target = field
         ? { page: field.page, x: field.x, y: field.y, w: field.w, h: field.h }
@@ -244,47 +386,38 @@ Deno.serve(async (req) => {
             return { page: pages.length, x: width - 220, y: 60, w: 170, h: 55 };
           })();
 
+      const rubricBytes = decodeDataUrl(rubric);
       const page = pages[Math.min(Math.max(target.page, 1), pages.length) - 1];
-      const png = await pdfDoc.embedPng(decodeDataUrl(rubric));
+      const png = await pdfDoc.embedPng(rubricBytes);
 
-      // La rúbrica ocupa la parte alta del recuadro; abajo va el pie de firma.
-      const captionH = 11;
-      const inkH = Math.max(10, target.h - captionH - 4);
-      const fit = Math.min(target.w / png.width, inkH / png.height);
+      // Solo el dibujo de la firma va sobre el PDF -- nada de correo, hora
+      // ni línea de pie. Ese rastro (quién, cuándo, IP) ya queda guardado
+      // en `signatures`/`audit_log`; estamparlo encima solo ensuciaba la
+      // rúbrica visualmente.
+      const fit = Math.min(target.w / png.width, target.h / png.height);
       const dw = png.width * fit;
       const dh = png.height * fit;
 
       page.drawImage(png, {
         x: target.x + (target.w - dw) / 2,
-        y: target.y + captionH + 4 + (inkH - dh) / 2,
+        y: target.y + (target.h - dh) / 2,
         width: dw,
         height: dh,
       });
 
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const pad = (n: number) => String(n).padStart(2, "0");
-      // Solo ASCII: Helvetica/WinAnsi no cubre todo y el pie debe ser fiable.
-      const caption = `${user.email ?? "firmante"} - ${pad(
-        stamped.getUTCDate()
-      )}/${pad(stamped.getUTCMonth() + 1)}/${stamped.getUTCFullYear()} ${pad(
-        stamped.getUTCHours()
-      )}:${pad(stamped.getUTCMinutes())} UTC`;
-
-      const captionSize = 6;
-      const captionW = font.widthOfTextAtSize(caption, captionSize);
-      page.drawLine({
-        start: { x: target.x, y: target.y + captionH + 2 },
-        end: { x: target.x + target.w, y: target.y + captionH + 2 },
-        thickness: 0.4,
-        color: rgb(0.45, 0.45, 0.45),
-      });
-      page.drawText(caption, {
-        x: target.x + Math.max(0, (target.w - captionW) / 2),
-        y: target.y + 3,
-        size: captionSize,
-        font,
-        color: rgb(0.32, 0.32, 0.32),
-      });
+      // Se guarda aparte, sin quemar: es lo único que permite reconstruir el
+      // PDF sin esta rúbrica si más tarde hay que deshacerla.
+      rubricPath = `${doc.owner_id}/${sigId}.png`;
+      const { error: rubErr } = await admin.storage
+        .from("rubrics")
+        .upload(rubricPath, rubricBytes, {
+          contentType: "image/png",
+          upsert: true,
+        });
+      if (rubErr) {
+        console.error("rubrics.upload:", rubErr);
+        rubricPath = null;
+      }
     }
 
     // ---- ¿Cierra el documento? -------------------------------------------
@@ -354,6 +487,7 @@ Deno.serve(async (req) => {
       if (certErr) console.error("signatures.update:", certErr);
     } else {
       const { error: sigErr } = await admin.from("signatures").insert({
+        id: sigId,
         document_id: doc.id,
         field_id: field?.id ?? null,
         signer_id: user.id,
@@ -361,6 +495,7 @@ Deno.serve(async (req) => {
         ip,
         cert_subject: complete ? "CN=FirmaDrive Dev Signer" : null,
         tsa_token: null,
+        rubric_path: rubricPath,
       });
       if (sigErr) console.error("signatures.insert:", sigErr);
     }

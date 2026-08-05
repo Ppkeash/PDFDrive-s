@@ -212,7 +212,13 @@ export function RubricPad({
         </div>
 
         <div className="p-5">
-          <div className="relative rounded border border-line-strong bg-white">
+          <div
+            className="relative rounded border border-line-strong bg-white"
+            // Ademas de bg-white: declarar el esquema de color por elemento
+            // evita que un navegador con "oscurecer sitios web" reinvierta
+            // este recuadro pensando que quedo sin adaptar al modo oscuro.
+            style={{ colorScheme: "light" }}
+          >
             <canvas
               ref={canvasRef}
               onPointerDown={start}
