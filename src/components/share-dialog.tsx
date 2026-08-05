@@ -27,6 +27,7 @@ export function ShareDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("firmante");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   // Cerrar con Escape: el diálogo es modal, debe comportarse como tal.
@@ -40,12 +41,23 @@ export function ShareDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
+    const invited = email.trim();
     startTransition(async () => {
-      const res = await shareDocument(documentId, email.trim(), role);
+      const res = await shareDocument(documentId, invited, role);
       if (res.error) return setError(res.error);
+      router.refresh();
+
+      // Si aún no tiene cuenta conviene decirlo: la invitación queda guardada
+      // y se activa sola cuando se registre con ese mismo correo.
+      if (res.pending) {
+        setEmail("");
+        return setNotice(
+          `Invitación guardada. ${invited} verá el documento en cuanto cree su cuenta con ese correo.`
+        );
+      }
       setEmail("");
       setOpen(false);
-      router.refresh();
     });
   }
 
@@ -149,6 +161,11 @@ export function ShareDialog({
                   className="rounded border-l-2 border-danger bg-surface-2 px-3 py-2 text-sm text-danger"
                 >
                   {error}
+                </p>
+              )}
+              {notice && (
+                <p className="rounded border-l-2 border-ok bg-ok-soft px-3 py-2 text-sm text-ok">
+                  {notice}
                 </p>
               )}
 

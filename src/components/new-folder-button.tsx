@@ -6,7 +6,12 @@ import { createFolder } from "@/app/drive/actions";
 import { FolderPlus } from "lucide-react";
 import { Spinner } from "@/components/spinner";
 
-export function NewFolderButton() {
+export function NewFolderButton({
+  parentId = null,
+}: {
+  /** Crea la carpeta dentro de la que se está viendo, no siempre en la raíz. */
+  parentId?: string | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -14,7 +19,7 @@ export function NewFolderButton() {
     const name = window.prompt("Nombre de la carpeta");
     if (!name) return;
     startTransition(async () => {
-      await createFolder(name);
+      await createFolder(name, parentId);
       router.refresh();
     });
   }

@@ -12,7 +12,12 @@ const MIME_OK = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
-export function UploadButton() {
+export function UploadButton({
+  folderId = null,
+}: {
+  /** Sube dentro de la carpeta que se está viendo. */
+  folderId?: string | null;
+}) {
   const router = useRouter();
   const supabase = createClient();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,6 +53,7 @@ export function UploadButton() {
         storage_path: path,
         mime: file.type,
         status: "borrador",
+        folder_id: folderId,
       });
       if (insErr) throw insErr;
 

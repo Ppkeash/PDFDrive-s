@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { renameDocument, softDeleteDocument } from "@/app/drive/actions";
 import { StatusChip } from "@/components/status-chip";
-import { Download, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { MenuItem, RowMenu } from "@/components/row-menu";
+import { MoveDialog, type FolderOption } from "@/components/move-dialog";
+import { Download, FolderInput, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DocStatus } from "@/types";
 
@@ -16,20 +18,23 @@ export function DocumentRow({
   status,
   storagePath,
   createdAt,
+  folderId,
+  folders,
 }: {
   id: string;
   name: string;
   status: DocStatus;
   storagePath: string;
   createdAt: string;
+  folderId: string | null;
+  folders: FolderOption[];
 }) {
   const router = useRouter();
   const supabase = createClient();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   async function download() {
-    setMenuOpen(false);
     const { data } = await supabase.storage
       .from("originals")
       .createSignedUrl(storagePath, 60);
@@ -37,7 +42,6 @@ export function DocumentRow({
   }
 
   function rename() {
-    setMenuOpen(false);
     const next = window.prompt("Nuevo nombre", name);
     if (!next || next === name) return;
     startTransition(async () => {
@@ -47,7 +51,6 @@ export function DocumentRow({
   }
 
   function remove() {
-    setMenuOpen(false);
     if (!window.confirm(`¿Mover "${name}" a la papelera?`)) return;
     startTransition(async () => {
       await softDeleteDocument(id);
@@ -79,35 +82,59 @@ export function DocumentRow({
       <StatusChip status={status} />
 
       <div className="relative z-10">
-        <button
-          onClick={() => setMenuOpen((v) => !v)}
-          className="rounded p-2 text-muted transition-colors hover:bg-surface hover:text-ink"
-          aria-label={`Acciones de ${name}`}
-          aria-expanded={menuOpen}
-        >
-          <MoreVertical className="h-4 w-4" />
-        </button>
-
-        {menuOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={() => setMenuOpen(false)}
-            />
-            <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-line bg-surface p-1 shadow-pop">
-              <MenuItem icon={<Download />} onClick={download}>
+        <RowMenu label={`Acciones de ${name}`}>
+          {(close) => (
+            <>
+              <MenuItem
+                icon={<Download />}
+                onClick={() => {
+                  close();
+                  download();
+                }}
+              >
                 Descargar
               </MenuItem>
-              <MenuItem icon={<Pencil />} onClick={rename}>
+              <MenuItem
+                icon={<FolderInput />}
+                onClick={() => {
+                  close();
+                  setMoveOpen(true);
+                }}
+              >
+                Mover a…
+              </MenuItem>
+              <MenuItem
+                icon={<Pencil />}
+                onClick={() => {
+                  close();
+                  rename();
+                }}
+              >
                 Renombrar
               </MenuItem>
-              <MenuItem icon={<Trash2 />} onClick={remove} danger>
+              <MenuItem
+                icon={<Trash2 />}
+                danger
+                onClick={() => {
+                  close();
+                  remove();
+                }}
+              >
                 Eliminar
               </MenuItem>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </RowMenu>
       </div>
+
+      <MoveDialog
+        open={moveOpen}
+        documentId={id}
+        documentName={name}
+        currentFolderId={folderId}
+        folders={folders}
+        onClose={() => setMoveOpen(false)}
+      />
     </li>
   );
 }
@@ -142,30 +169,5 @@ function PageMark() {
         opacity="0.55"
       />
     </svg>
-  );
-}
-
-function MenuItem({
-  icon,
-  children,
-  onClick,
-  danger,
-}: {
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  onClick: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-sm transition-colors hover:bg-surface-2 [&>svg]:h-4 [&>svg]:w-4",
-        danger ? "text-danger" : "text-ink"
-      )}
-    >
-      {icon}
-      {children}
-    </button>
   );
 }
