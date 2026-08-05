@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ShareDialog } from "@/components/share-dialog";
-import { SignaturePanel } from "@/components/signature-panel";
+import { DocumentWorkspace } from "@/components/document-workspace";
+import type { SignField } from "@/components/pdf-viewer";
+import type { DocStatus } from "@/types";
 import { ArrowLeft, Download } from "lucide-react";
 
 export default async function DocumentPage({
@@ -27,14 +29,14 @@ export default async function DocumentPage({
   } = await supabase.auth.getUser();
   const isOwner = user?.id === doc.owner_id;
 
-  // Preferir la versión firmada para la vista previa.
+  // Se muestra siempre la última versión: con rúbricas si ya hay alguna.
   const viewBucket = doc.signed_path ? "signed" : "originals";
   const viewPath = doc.signed_path ?? doc.storage_path;
-  const { data: signed } = await supabase.storage
+  const { data: signedUrl } = await supabase.storage
     .from(viewBucket)
     .createSignedUrl(viewPath, 3600);
 
-  const [{ data: shares }, { data: fields }, { data: signers }] =
+  const [{ data: shares }, { data: fieldRows }, { data: signatureRows }] =
     await Promise.all([
       supabase
         .from("document_shares")
@@ -42,18 +44,34 @@ export default async function DocumentPage({
         .eq("document_id", doc.id),
       supabase
         .from("signature_fields")
-        .select("id, page, assigned_email")
+        .select("id, page, x, y, w, h, assigned_email")
         .eq("document_id", doc.id)
         .order("order_index"),
       supabase
         .from("signatures")
-        .select("signer_id, signed_at, cert_subject")
+        .select("signer_id, field_id, signed_at, cert_subject")
         .eq("document_id", doc.id)
         .order("signed_at"),
     ]);
 
+  const signatures = signatureRows ?? [];
+  const signedFieldIds = new Set(
+    signatures.map((s) => s.field_id).filter(Boolean)
+  );
+
+  const fields: SignField[] = (fieldRows ?? []).map((f) => ({
+    id: f.id,
+    page: f.page,
+    x: f.x,
+    y: f.y,
+    w: f.w,
+    h: f.h,
+    assigned_email: f.assigned_email,
+    signed: signedFieldIds.has(f.id),
+  }));
+
   const isPdf = doc.mime === "application/pdf";
-  const alreadySigned = !!signers?.some((s) => s.signer_id === user?.id);
+  const sealed = doc.status === "firmado";
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -82,9 +100,9 @@ export default async function DocumentPage({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {signed?.signedUrl && (
+          {signedUrl?.signedUrl && (
             <a
-              href={signed.signedUrl}
+              href={signedUrl.signedUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex h-10 items-center gap-2 rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
@@ -97,72 +115,31 @@ export default async function DocumentPage({
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col lg:flex-row">
-        {/* Visor */}
-        <div className="flex-1 bg-paper p-4 sm:p-5">
-          {isPdf && signed?.signedUrl ? (
-            <iframe
-              src={signed.signedUrl}
-              className="h-[70vh] w-full rounded-lg border border-line bg-white lg:h-full"
-              title={`Vista previa de ${doc.name}`}
-            />
-          ) : (
-            <div className="flex h-full min-h-[50vh] flex-col items-center justify-center rounded-lg border border-dashed border-line-strong bg-surface p-6 text-center">
-              <h2 className="font-display text-lg font-semibold">
-                Sin vista previa
-              </h2>
-              <p className="mt-1.5 max-w-xs text-sm text-muted">
-                Los .docx se podrán previsualizar cuando se active la conversión
-                a PDF. Mientras tanto, descárgalo.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Acta lateral */}
-        <aside className="w-full shrink-0 border-t border-line bg-surface p-5 lg:w-[21rem] lg:border-l lg:border-t-0">
-          {isPdf ? (
-            <SignaturePanel
-              documentId={doc.id}
-              isOwner={isOwner}
-              status={doc.status}
-              signedPath={doc.signed_path}
-              fields={fields ?? []}
-              signers={signers ?? []}
-              alreadySigned={alreadySigned}
-            />
-          ) : (
-            <p className="text-sm text-muted">
-              La firma digital solo aplica a PDF.
-            </p>
-          )}
-
-          <section className="mt-7 border-t border-line pt-5">
-            <h2 className="text-micro uppercase text-muted">
-              Con acceso ({shares?.length ?? 0})
+      {isPdf ? (
+        <DocumentWorkspace
+          documentId={doc.id}
+          url={signedUrl?.signedUrl ?? null}
+          isOwner={isOwner}
+          status={doc.status as DocStatus}
+          sealed={sealed}
+          fields={fields}
+          signers={signatures}
+          shares={shares ?? []}
+          userEmail={user?.email ?? ""}
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="max-w-sm rounded-lg border border-dashed border-line-strong bg-surface p-6 text-center">
+            <h2 className="font-display text-lg font-semibold">
+              Sin vista previa
             </h2>
-            {!shares || shares.length === 0 ? (
-              <p className="mt-2.5 text-sm text-muted">
-                Solo tú puedes ver este documento.
-              </p>
-            ) : (
-              <ul className="mt-2.5 flex flex-col gap-1">
-                {shares.map((s) => (
-                  <li
-                    key={s.email}
-                    className="flex items-center justify-between gap-2 rounded border border-line bg-surface-2 px-3 py-2"
-                  >
-                    <span className="min-w-0 truncate text-sm">{s.email}</span>
-                    <span className="shrink-0 text-xs capitalize text-muted">
-                      {s.role}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </aside>
-      </div>
+            <p className="mt-1.5 text-sm text-muted">
+              La firma digital aplica a PDF. Los .docx se podrán previsualizar
+              cuando se active la conversión.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,13 +1,21 @@
 // Edge Function: verify-pdf
-// Verifica un documento firmado:
-//   - detecta la presencia de firma(s) digitales en el PDF (/ByteRange /Contents)
-//   - comprueba la integridad por hash (SHA-256 vs el registrado al firmar)
-//   - devuelve la lista de firmantes y el rastro de auditoría
 //
-// Nota: la validación completa de la cadena de certificados (CA de confianza) y
-// del sellado de tiempo se conecta en producción con un proveedor/TSA real.
+// Verificación criptográfica real de la firma incrustada en el PDF:
+//
+//   1. Localiza cada /ByteRange y reconstruye exactamente los bytes firmados.
+//   2. Extrae el PKCS#7 (CMS) de /Contents.
+//   3. Comprueba que el messageDigest firmado coincide con el digest que
+//      calculamos ahora sobre esos bytes  → detecta cualquier modificación.
+//   4. Verifica la firma de los atributos autenticados contra la clave pública
+//      del certificado          → demuestra que la hizo quien dice el cert.
+//   5. Comprueba que el ByteRange cubre TODO el archivo salvo el hueco de la
+//      firma → detecta contenido añadido después de firmar.
+//
+// Lo que todavía NO hace: validar la cadena del certificado contra una CA de
+// confianza (el actual es autofirmado de desarrollo) ni un sello de tiempo TSA.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import forge from "npm:node-forge@1";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +35,151 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+const DIGEST_BY_OID: Record<string, () => forge.md.MessageDigest> = {
+  "2.16.840.1.101.3.4.2.1": () => forge.md.sha256.create(),
+  "2.16.840.1.101.3.4.2.2": () => forge.md.sha384.create(),
+  "2.16.840.1.101.3.4.2.3": () => forge.md.sha512.create(),
+  "1.3.14.3.2.26": () => forge.md.sha1.create(),
+};
+
+type SigReport = {
+  valid: boolean;
+  digestMatch: boolean;
+  signatureValid: boolean;
+  coversWholeFile: boolean;
+  subject: string | null;
+  issuer: string | null;
+  signedAt: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  selfSigned: boolean;
+  problem?: string;
+};
+
+function nameToString(attrs: forge.pki.CertificateField[]): string {
+  return attrs
+    .map((a) => `${a.shortName ?? a.name}=${a.value}`)
+    .join(", ");
+}
+
+/** Verifica una firma concreta a partir de su /ByteRange. */
+function verifyOne(
+  bytes: Uint8Array,
+  latin1: string,
+  range: [number, number, number, number]
+): SigReport {
+  const [a, b, c, d] = range;
+  const report: SigReport = {
+    valid: false,
+    digestMatch: false,
+    signatureValid: false,
+    coversWholeFile: a === 0 && c + d === bytes.length,
+    subject: null,
+    issuer: null,
+    signedAt: null,
+    validFrom: null,
+    validTo: null,
+    selfSigned: false,
+  };
+
+  try {
+    // Los bytes realmente firmados: todo el archivo menos el hueco de /Contents.
+    const signedContent = latin1.slice(a, a + b) + latin1.slice(c, c + d);
+
+    // El hueco contiene el PKCS#7 en hexadecimal, relleno con ceros al final.
+    const rawGap = latin1.slice(a + b, c);
+    const hex = rawGap
+      .replace(/[<>\s]/g, "")
+      .replace(/(00)+$/, "");
+    if (!hex) {
+      report.problem = "No se encontró el contenido de la firma.";
+      return report;
+    }
+
+    const der = forge.util.hexToBytes(hex);
+    const asn1 = forge.asn1.fromDer(der, false);
+    // deno-lint-ignore no-explicit-any
+    const p7: any = forge.pkcs7.messageFromAsn1(asn1);
+    const capture = p7.rawCapture;
+
+    const digestOid = forge.asn1.derToOid(capture.digestAlgorithm);
+    const makeDigest = DIGEST_BY_OID[digestOid];
+    if (!makeDigest) {
+      report.problem = `Algoritmo de digest no soportado (${digestOid}).`;
+      return report;
+    }
+
+    // --- 1. ¿El documento cambió desde que se firmó? ---
+    const md = makeDigest();
+    md.update(signedContent);
+    const computed = md.digest().getBytes();
+
+    const authAttrs = capture.authenticatedAttributes ?? [];
+    let declared: string | null = null;
+
+    for (const attr of authAttrs) {
+      const oid = forge.asn1.derToOid(attr.value[0].value);
+      if (oid === forge.pki.oids.messageDigest) {
+        declared = attr.value[1].value[0].value;
+      } else if (oid === forge.pki.oids.signingTime) {
+        const raw = attr.value[1].value[0].value;
+        const parsed =
+          raw instanceof Date ? raw : new Date(String(raw));
+        if (!isNaN(parsed.getTime())) report.signedAt = parsed.toISOString();
+      }
+    }
+
+    if (declared === null) {
+      report.problem = "La firma no declara messageDigest.";
+      return report;
+    }
+    report.digestMatch = declared === computed;
+
+    // --- 2. ¿La firma la hizo el titular del certificado? ---
+    const cert = p7.certificates?.[0];
+    if (!cert) {
+      report.problem = "La firma no incluye certificado.";
+      return report;
+    }
+
+    report.subject = nameToString(cert.subject.attributes);
+    report.issuer = nameToString(cert.issuer.attributes);
+    report.validFrom = cert.validity.notBefore?.toISOString() ?? null;
+    report.validTo = cert.validity.notAfter?.toISOString() ?? null;
+    report.selfSigned = report.subject === report.issuer;
+
+    // La firma cubre el DER de los atributos autenticados, reetiquetados
+    // como SET (en el PDF viajan con etiqueta implícita [0]).
+    const attrsSet = forge.asn1.create(
+      forge.asn1.Class.UNIVERSAL,
+      forge.asn1.Type.SET,
+      true,
+      authAttrs
+    );
+    const attrsDer = forge.asn1.toDer(attrsSet).getBytes();
+
+    const mdAttrs = makeDigest();
+    mdAttrs.update(attrsDer);
+
+    try {
+      report.signatureValid = cert.publicKey.verify(
+        mdAttrs.digest().getBytes(),
+        capture.signature
+      );
+    } catch {
+      report.signatureValid = false;
+    }
+
+    report.valid =
+      report.digestMatch && report.signatureValid && report.coversWholeFile;
+    return report;
+  } catch (err) {
+    report.problem =
+      err instanceof Error ? err.message : "No se pudo analizar la firma.";
+    return report;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -57,30 +210,52 @@ Deno.serve(async (req) => {
       .eq("id", documentId)
       .maybeSingle();
     if (!doc) return json({ error: "Documento no encontrado o sin acceso" }, 404);
+
     if (!doc.signed_path)
-      return json({ valid: false, reason: "El documento no está firmado" });
+      return json({
+        state: "sin_firmar",
+        valid: false,
+        reason: "Todavía nadie ha firmado este documento.",
+      });
+
+    if (doc.status !== "firmado")
+      return json({
+        state: "sin_sellar",
+        valid: false,
+        reason:
+          "Hay rúbricas estampadas, pero el documento aún no está sellado: falta que firmen los campos pendientes.",
+      });
 
     const admin = createClient(url, service);
     const { data: file, error: dlErr } = await admin.storage
       .from("signed")
       .download(doc.signed_path);
     if (dlErr || !file)
-      return json({ error: `No se pudo leer el PDF firmado` }, 500);
+      return json({ error: "No se pudo leer el PDF firmado" }, 500);
 
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const text = new TextDecoder("latin1").decode(bytes);
+    const latin1 = new TextDecoder("latin1").decode(bytes);
 
-    // Detectar firmas: cada firma PAdES deja un /ByteRange y /Contents.
-    const byteRanges = (text.match(/\/ByteRange/g) ?? []).length;
-    const hasSignature = byteRanges > 0 && text.includes("/Contents");
+    // Localizar cada firma incrustada.
+    const ranges: [number, number, number, number][] = [];
+    const re = /\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/g;
+    for (const m of latin1.matchAll(re)) {
+      ranges.push([+m[1], +m[2], +m[3], +m[4]]);
+    }
 
-    // Integridad: el hash actual debe coincidir con el registrado al firmar.
-    const currentHash = await sha256Hex(bytes);
-    const hashMatch = currentHash === doc.current_hash;
+    if (ranges.length === 0)
+      return json({
+        state: "sin_firma_digital",
+        valid: false,
+        reason: "El PDF no lleva ninguna firma digital incrustada.",
+      });
+
+    const signatures = ranges.map((r) => verifyOne(bytes, latin1, r));
+    const allValid = signatures.every((s) => s.valid);
 
     const { data: signers } = await asUser
       .from("signatures")
-      .select("signer_id, signed_at, cert_subject, ip")
+      .select("signer_id, signed_at, cert_subject")
       .eq("document_id", doc.id)
       .order("signed_at");
 
@@ -91,19 +266,21 @@ Deno.serve(async (req) => {
       .order("created_at");
 
     return json({
-      valid: hasSignature && hashMatch,
-      hasSignature,
-      hashMatch,
-      signatureCount: byteRanges,
-      currentHash,
+      state: allValid ? "valido" : "alterado",
+      valid: allValid,
+      signatures,
+      signatureCount: signatures.length,
+      // Referencia cruzada con lo que registramos al sellar.
+      currentHash: await sha256Hex(bytes),
       registeredHash: doc.current_hash,
-      status: doc.status,
       signers: signers ?? [],
       audit: audit ?? [],
-      note:
-        "Integridad y presencia de firma verificadas. La validación de la cadena de CA y el sello de tiempo se activan en producción.",
+      caveat: signatures.some((s) => s.selfSigned)
+        ? "El certificado es autofirmado (desarrollo): prueba integridad y autoría dentro de FirmaDrive, pero no la identidad ante terceros."
+        : null,
     });
   } catch (err) {
+    console.error("verify-pdf:", err);
     return json(
       { error: err instanceof Error ? err.message : "Error al verificar" },
       500

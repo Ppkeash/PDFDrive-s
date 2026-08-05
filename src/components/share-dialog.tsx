@@ -14,7 +14,14 @@ const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: "lector", label: "Lector", hint: "Solo puede ver y descargar" },
 ];
 
-export function ShareDialog({ documentId }: { documentId: string }) {
+export function ShareDialog({
+  documentId,
+  compact = false,
+}: {
+  documentId: string;
+  /** En el acta lateral basta un enlace: el botón grande vive en la cabecera. */
+  compact?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -44,12 +51,21 @@ export function ShareDialog({ documentId }: { documentId: string }) {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex h-10 items-center gap-2 rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
-      >
-        <Share2 className="h-4 w-4" /> Compartir
-      </button>
+      {compact ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="text-xs font-medium text-seal transition-opacity hover:opacity-80"
+        >
+          Invitar
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="inline-flex h-10 items-center gap-2 rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
+        >
+          <Share2 className="h-4 w-4" /> Compartir
+        </button>
+      )}
 
       {open && (
         <div
