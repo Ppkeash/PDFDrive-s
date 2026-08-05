@@ -288,14 +288,14 @@ Deno.serve(async (req) => {
     }
 
     // ---- ¿Cierra el documento? -------------------------------------------
-    // El sello es el acto definitivo: a partir de ahí nadie puede tocar el PDF
-    // sin romper la firma. Por eso solo lo dispara quien manda en el documento.
-    // Si el último en firmar es un invitado, el documento queda completo pero
-    // abierto, esperando a que el propietario o un editor lo cierre.
+    // Nunca por firmar. El sello es el acto definitivo -- después nadie puede
+    // tocar el PDF sin romper la firma, ni sumarse a firmar-- y por eso exige
+    // una decisión aparte: `seal`, que solo puede pedir el dueño o un editor.
+    // Firmar el último campo deja el documento completo, pero abierto.
     const remaining = fields.filter(
       (f) => !signedFieldIds.has(f.id) && f.id !== field?.id
     );
-    const complete = remaining.length === 0 && canEditFields;
+    const complete = !!seal;
 
     let outBytes: Uint8Array;
 

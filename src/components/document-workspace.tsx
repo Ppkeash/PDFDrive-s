@@ -281,12 +281,10 @@ export function DocumentWorkspace({
    */
   async function submitRubric(png: string) {
     if (signableField) {
-      // Firmar es definitivo: se avisa antes de estampar nada.
+      // Firmar es definitivo: se avisa antes de estampar nada. Pero firmar no
+      // cierra el documento — eso es una decisión aparte.
       setPadOpen(false);
-      setIntent({
-        seals: canEdit(role) && pendingCount <= 1,
-        run: () => sign(signableField.id, png),
-      });
+      setIntent({ seals: false, run: () => sign(signableField.id, png) });
       return;
     }
 
@@ -376,17 +374,12 @@ export function DocumentWorkspace({
                 Cancelar
               </button>
               <button
-                onClick={() =>
-                  setIntent({
-                    seals: canEdit(role) && pendingCount === 0,
-                    run: placePending,
-                  })
-                }
+                onClick={() => setIntent({ seals: false, run: placePending })}
                 disabled={busy}
                 className="inline-flex h-9 items-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
               >
                 {busy && <Spinner />}
-                {busy ? "Firmando…" : "Confirmar firma"}
+                {busy ? "Firmando…" : "Firmar"}
               </button>
             </div>
           </div>
@@ -448,7 +441,9 @@ export function DocumentWorkspace({
               {noFields
                 ? "Todavía no hay campos. Marca sobre el documento dónde va cada firma."
                 : pendingCount === 0
-                  ? "Todos los campos están firmados."
+                  ? canEdit(role)
+                    ? "Todo firmado. El documento sigue abierto: puedes invitar a alguien más o cerrarlo."
+                    : "Todos los campos están firmados."
                   : `Faltan ${pendingCount} de ${fields.length} firmas.`}
             </p>
           )}
@@ -572,21 +567,27 @@ export function DocumentWorkspace({
               </p>
             )}
 
-            {/* Cerrar el documento es cosa del dueño o de un editor, aunque
-                haya firmado otro: es lo que impide que un invitado deje el
-                documento sellado antes de tiempo. */}
+            {/* Cerrar es un acto aparte de firmar: mientras el documento siga
+                abierto se puede invitar a más gente. Y lo cierra quien manda,
+                no el último que firme. */}
             {!sealed && allSigned && canEdit(role) && (
-              <button
-                onClick={() => setIntent({ seals: true, run: sealDocument })}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded border border-seal bg-seal-soft px-4 text-sm font-medium text-seal transition-colors hover:bg-seal hover:text-seal-ink"
-              >
-                <Lock className="h-4 w-4" /> Cerrar y sellar
-              </button>
+              <>
+                <button
+                  onClick={() => setIntent({ seals: true, run: sealDocument })}
+                  className="mt-1 inline-flex h-11 items-center justify-center gap-2 rounded border border-seal bg-seal-soft px-4 text-sm font-medium text-seal transition-colors hover:bg-seal hover:text-seal-ink"
+                >
+                  <Lock className="h-4 w-4" /> Cerrar documento
+                </button>
+                <p className="text-xs text-muted">
+                  Hasta que lo cierres puedes seguir invitando gente a firmar.
+                  Al cerrarlo se sella y ya no admite más firmas.
+                </p>
+              </>
             )}
 
             {!sealed && allSigned && !canEdit(role) && (
               <p className="text-sm text-muted">
-                Ya está todo firmado. Falta que el propietario cierre y selle el
+                Ya está todo firmado. Falta que el propietario cierre el
                 documento.
               </p>
             )}
@@ -710,7 +711,7 @@ export function DocumentWorkspace({
         open={!!intent}
         busy={busy}
         title={intent?.seals ? "Vas a cerrar el documento" : "Vas a firmar"}
-        confirmLabel={intent?.seals ? "Firmar y cerrar" : "Sí, firmar"}
+        confirmLabel={intent?.seals ? "Cerrar y sellar" : "Sí, firmar"}
         onCancel={() => !busy && setIntent(null)}
         onConfirm={runIntent}
       >
@@ -734,8 +735,8 @@ export function DocumentWorkspace({
               después.
             </p>
             <p>
-              El documento seguirá abierto hasta que estén todas las firmas y el
-              propietario lo cierre.
+              Esto <strong>no cierra</strong> el documento: seguirá abierto para
+              invitar a más gente hasta que el propietario lo cierre.
             </p>
           </>
         )}
