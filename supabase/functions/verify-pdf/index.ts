@@ -37,6 +37,24 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
+/**
+ * Convierte los bytes a la cadena binaria que espera node-forge (un carácter
+ * por byte).
+ *
+ * No se usa TextDecoder("latin1") a propósito: según el estándar WHATWG esa
+ * etiqueta resuelve a windows-1252, que remapea los bytes 0x80–0x9F a otros
+ * puntos Unicode. Eso corrompe el contenido justo antes de calcular el digest
+ * y hacía que un PDF intacto se reportara como alterado.
+ */
+function toBinaryString(bytes: Uint8Array): string {
+  const CHUNK = 0x8000;
+  let out = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    out += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return out;
+}
+
 const DIGEST_BY_OID: Record<string, () => forge.md.MessageDigest> = {
   "2.16.840.1.101.3.4.2.1": () => forge.md.sha256.create(),
   "2.16.840.1.101.3.4.2.2": () => forge.md.sha384.create(),
@@ -234,7 +252,7 @@ Deno.serve(async (req) => {
       return json({ error: "No se pudo leer el PDF firmado" }, 500);
 
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const latin1 = new TextDecoder("latin1").decode(bytes);
+    const latin1 = toBinaryString(bytes);
 
     // Localizar cada firma incrustada.
     const ranges: [number, number, number, number][] = [];
