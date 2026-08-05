@@ -1,16 +1,18 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { RubricPad } from "@/components/rubric-pad";
 import { StatusChip } from "@/components/status-chip";
 import { ShareDialog, type ShareRow } from "@/components/share-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Spinner } from "@/components/spinner";
 import {
   DEFAULT_FIELD,
   type FieldBox,
+  type GhostField,
   type PendingSignature,
   type SignField,
 } from "@/components/pdf-viewer";
@@ -20,6 +22,7 @@ import type { DocStatus, ShareRole } from "@/types";
 import {
   BadgeCheck,
   Check,
+  Lock,
   MapPin,
   PenLine,
   ShieldCheck,
@@ -55,6 +58,13 @@ type VerifySignature = {
   subject: string | null;
   signedAt: string | null;
   problem?: string;
+};
+
+/** Lo que se ejecutará si el usuario confirma el aviso. */
+type Intent = {
+  /** Si al hacerlo el documento queda cerrado y sellado. */
+  seals: boolean;
+  run: () => Promise<unknown>;
 };
 
 type VerifyResult = {
@@ -100,11 +110,22 @@ export function DocumentWorkspace({
   const [padOpen, setPadOpen] = useState(false);
   // Firma ya trazada que el usuario está colocando sobre el documento.
   const [pending, setPending] = useState<PendingSignature | null>(null);
+  // Campo pedido con un clic y todavía sin confirmar por el servidor.
+  const [ghost, setGhost] = useState<GhostField | null>(null);
   const pageSizes = useRef<{ width: number; height: number }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
   const [verifying, setVerifying] = useState(false);
+  // Acción irreversible a la espera de confirmación.
+  const [intent, setIntent] = useState<Intent | null>(null);
+  const [, startRefresh] = useTransition();
+
+  // El campo fantasma vive hasta que el servidor devuelve la lista nueva: en
+  // ese momento `fields` cambia de identidad y el recuadro real ocupa su sitio.
+  useEffect(() => {
+    setGhost(null);
+  }, [fields]);
 
   // El campo que le toca a esta persona: lo suyo, pendiente.
   const myField = useMemo(
@@ -124,6 +145,8 @@ export function DocumentWorkspace({
 
   const pendingCount = fields.filter((f) => !f.signed).length;
   const noFields = fields.length === 0;
+  /** Todo lo que había que firmar está firmado: solo falta cerrar. */
+  const allSigned = fields.length > 0 && pendingCount === 0;
 
   // Ya firmé si alguno de mis campos está firmado: el firmante firma una vez,
   // el dueño puede añadir tantas rúbricas como quiera.
@@ -148,10 +171,19 @@ export function DocumentWorkspace({
     return [...set];
   }, [shares, userEmail]);
 
+  function refresh() {
+    startRefresh(() => router.refresh());
+  }
+
   async function addField(page: number, x: number, y: number) {
     setError(null);
-    const email = assignTo.trim();
+    const email = assignTo.trim().toLowerCase();
     if (!email) return setError("Elige a quién le toca firmar este campo.");
+
+    // El recuadro aparece al instante donde se hizo clic y bloquea los
+    // siguientes: antes, mientras se guardaba no pasaba nada visible y dos
+    // clics seguidos creaban dos campos encima del otro.
+    setGhost({ page, x, y });
 
     const { error } = await supabase.from("signature_fields").insert({
       document_id: documentId,
@@ -163,8 +195,11 @@ export function DocumentWorkspace({
       assigned_email: email,
       order_index: fields.length,
     });
-    if (error) return setError(error.message);
-    router.refresh();
+    if (error) {
+      setGhost(null);
+      return setError(error.message);
+    }
+    refresh();
   }
 
   async function removeField(id: string) {
@@ -173,7 +208,7 @@ export function DocumentWorkspace({
       .delete()
       .eq("id", id);
     if (error) return setError(error.message);
-    router.refresh();
+    refresh();
   }
 
   /** Guarda la posición y el tamaño tras mover o redimensionar el campo. */
@@ -191,7 +226,7 @@ export function DocumentWorkspace({
       })
       .eq("id", id);
     if (error) return setError(error.message);
-    router.refresh();
+    refresh();
   }
 
   /** Envía la rúbrica al servidor para estamparla en `fieldId`. */
@@ -210,8 +245,33 @@ export function DocumentWorkspace({
     setPadOpen(false);
     setPending(null);
     setVerify(null);
-    router.refresh();
+    refresh();
     return true;
+  }
+
+  /** Cierra el documento: sella lo firmado y ya no admite cambios. */
+  async function sealDocument() {
+    setBusy(true);
+    setError(null);
+    const { data, error } = await supabase.functions.invoke("sign-pdf", {
+      body: { documentId, seal: true },
+    });
+    setBusy(false);
+
+    if (error || data?.error) {
+      setError(data?.error ?? error?.message ?? "No se pudo cerrar.");
+      return false;
+    }
+    setVerify(null);
+    refresh();
+    return true;
+  }
+
+  /** Ejecuta la acción confirmada y cierra el aviso si salió bien. */
+  async function runIntent() {
+    if (!intent) return;
+    const ok = await intent.run();
+    if (ok !== false) setIntent(null);
   }
 
   /**
@@ -221,7 +281,12 @@ export function DocumentWorkspace({
    */
   async function submitRubric(png: string) {
     if (signableField) {
-      await sign(signableField.id, png);
+      // Firmar es definitivo: se avisa antes de estampar nada.
+      setPadOpen(false);
+      setIntent({
+        seals: canEdit(role) && pendingCount <= 1,
+        run: () => sign(signableField.id, png),
+      });
       return;
     }
 
@@ -251,8 +316,8 @@ export function DocumentWorkspace({
   }
 
   /** Crea el campo donde el usuario dejó la firma y la estampa allí. */
-  async function confirmPending() {
-    if (!pending) return;
+  async function placePending() {
+    if (!pending) return false;
     setBusy(true);
     setError(null);
 
@@ -273,10 +338,11 @@ export function DocumentWorkspace({
 
     if (insErr || !created) {
       setBusy(false);
-      return setError(insErr?.message ?? "No se pudo guardar la posición.");
+      setError(insErr?.message ?? "No se pudo guardar la posición.");
+      return false;
     }
 
-    await sign(created.id, pending.src);
+    return await sign(created.id, pending.src);
   }
 
   async function runVerify() {
@@ -310,7 +376,12 @@ export function DocumentWorkspace({
                 Cancelar
               </button>
               <button
-                onClick={confirmPending}
+                onClick={() =>
+                  setIntent({
+                    seals: canEdit(role) && pendingCount === 0,
+                    run: placePending,
+                  })
+                }
                 disabled={busy}
                 className="inline-flex h-9 items-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
               >
@@ -323,9 +394,18 @@ export function DocumentWorkspace({
 
         {placing && !pending && (
           <p className="mb-3 flex items-center gap-2 rounded border-l-2 border-seal bg-seal-soft px-3 py-2 text-sm text-seal">
-            <MapPin className="h-4 w-4 shrink-0" />
-            Haz clic en el punto exacto donde debe firmar{" "}
-            <strong className="font-medium">{assignTo}</strong>.
+            {ghost ? (
+              <>
+                <Spinner className="h-4 w-4 shrink-0" />
+                Guardando el campo…
+              </>
+            ) : (
+              <>
+                <MapPin className="h-4 w-4 shrink-0" />
+                Haz clic en el punto exacto donde debe firmar{" "}
+                <strong className="font-medium">{assignTo}</strong>.
+              </>
+            )}
           </p>
         )}
 
@@ -333,8 +413,9 @@ export function DocumentWorkspace({
           <PdfViewer
             url={url}
             fields={fields}
-            placing={placing && canEditFields && !pending}
+            placing={placing && canEditFields && !pending && !ghost}
             onPlace={addField}
+            ghost={ghost}
             onRemove={canEditFields ? removeField : undefined}
             onUpdate={canEditFields ? updateField : undefined}
             pending={pending}
@@ -406,8 +487,9 @@ export function DocumentWorkspace({
 
               <button
                 onClick={() => setPlacing((v) => !v)}
+                disabled={!!ghost}
                 className={cn(
-                  "inline-flex h-10 items-center justify-center gap-2 rounded border px-3.5 text-sm font-medium transition-colors",
+                  "inline-flex h-10 items-center justify-center gap-2 rounded border px-3.5 text-sm font-medium transition-colors disabled:opacity-60",
                   placing
                     ? "border-seal bg-seal text-seal-ink"
                     : "border-line-strong bg-surface hover:bg-surface-2"
@@ -490,7 +572,26 @@ export function DocumentWorkspace({
               </p>
             )}
 
-            {!canSign && !sealed && (
+            {/* Cerrar el documento es cosa del dueño o de un editor, aunque
+                haya firmado otro: es lo que impide que un invitado deje el
+                documento sellado antes de tiempo. */}
+            {!sealed && allSigned && canEdit(role) && (
+              <button
+                onClick={() => setIntent({ seals: true, run: sealDocument })}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded border border-seal bg-seal-soft px-4 text-sm font-medium text-seal transition-colors hover:bg-seal hover:text-seal-ink"
+              >
+                <Lock className="h-4 w-4" /> Cerrar y sellar
+              </button>
+            )}
+
+            {!sealed && allSigned && !canEdit(role) && (
+              <p className="text-sm text-muted">
+                Ya está todo firmado. Falta que el propietario cierre y selle el
+                documento.
+              </p>
+            )}
+
+            {!canSign && !sealed && !allSigned && (
               <p className="text-sm text-muted">
                 {!roleCanSign(role)
                   ? "Tienes permiso de lectura: puedes ver y descargar, pero no firmar. Pídele al dueño que te cambie el permiso a firmante."
@@ -605,6 +706,41 @@ export function DocumentWorkspace({
         </div>
       </aside>
 
+      <ConfirmDialog
+        open={!!intent}
+        busy={busy}
+        title={intent?.seals ? "Vas a cerrar el documento" : "Vas a firmar"}
+        confirmLabel={intent?.seals ? "Firmar y cerrar" : "Sí, firmar"}
+        onCancel={() => !busy && setIntent(null)}
+        onConfirm={runIntent}
+      >
+        {intent?.seals ? (
+          <>
+            <p>
+              Con esto el documento queda <strong>sellado</strong>: nadie podrá
+              volver a firmarlo ni modificarlo, y cualquier cambio posterior
+              rompería la firma.
+            </p>
+            <p>
+              Comprueba antes que ya lo compartiste con todo el que tenía que
+              firmar y que está diligenciado. Si falta alguien, cancela y
+              compártelo primero.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              Tu firma queda estampada en el documento y no se puede quitar
+              después.
+            </p>
+            <p>
+              El documento seguirá abierto hasta que estén todas las firmas y el
+              propietario lo cierre.
+            </p>
+          </>
+        )}
+      </ConfirmDialog>
+
       <RubricPad
         open={padOpen}
         busy={busy}
@@ -615,10 +751,10 @@ export function DocumentWorkspace({
             ? `Firma de ${signableField.assigned_email}`
             : "Dibuja tu firma"
         }
-        // Sin sitio reservado, trazar es solo el primer paso: después hay que
-        // colocarla, así que el botón no debe prometer que ya se firmó.
-        confirmLabel={signableField ? "Firmar documento" : "Continuar"}
-        busyLabel={signableField ? "Firmando…" : "Un momento…"}
+        // Trazar nunca es el acto final: o hay que colocar la firma, o queda
+        // el aviso de confirmación. El botón no debe prometer que ya se firmó.
+        confirmLabel="Continuar"
+        busyLabel="Un momento…"
       />
     </div>
   );

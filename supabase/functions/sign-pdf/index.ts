@@ -71,9 +71,11 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization") ?? "";
     if (!authHeader) return json({ error: "Falta Authorization" }, 401);
 
-    const { documentId, fieldId, rubric } = await req.json();
+    // `seal` cierra el documento sin estampar nada: es el acto definitivo, y
+    // solo lo puede hacer quien manda en el documento (dueño o editor).
+    const { documentId, fieldId, rubric, seal } = await req.json();
     if (!documentId) return json({ error: "Falta documentId" }, 400);
-    if (!rubric || typeof rubric !== "string")
+    if (!seal && (!rubric || typeof rubric !== "string"))
       return json({ error: "Falta la rúbrica" }, 400);
 
     const url = Deno.env.get("SUPABASE_URL")!;
@@ -148,7 +150,27 @@ Deno.serve(async (req) => {
 
     let field: Field | null = null;
 
-    if (fields.length > 0) {
+    // ---- Cerrar y sellar (sin estampar) -----------------------------------
+    if (seal) {
+      if (!canEditFields)
+        return json(
+          {
+            error:
+              "Solo el propietario o un editor pueden cerrar el documento.",
+          },
+          403
+        );
+      const pendientes = fields.filter((f) => !signedFieldIds.has(f.id));
+      if (pendientes.length > 0)
+        return json(
+          {
+            error: `Todavía faltan ${pendientes.length} firma(s) por hacer.`,
+          },
+          409
+        );
+      if ((existing ?? []).length === 0)
+        return json({ error: "El documento no tiene ninguna firma." }, 409);
+    } else if (fields.length > 0) {
       if (fieldId) {
         field = fields.find((f) => f.id === fieldId) ?? null;
         if (!field)
@@ -196,7 +218,7 @@ Deno.serve(async (req) => {
         return json({ error: "Ya firmaste este documento." }, 409);
     }
 
-    // ---- Estampar la rúbrica ---------------------------------------------
+    // ---- Estampar la rúbrica (salvo si solo se viene a sellar) -------------
     const srcBucket = doc.signed_path ? "signed" : "originals";
     const srcPath = doc.signed_path ?? doc.storage_path;
     const { data: file, error: dlErr } = await admin.storage
@@ -210,69 +232,75 @@ Deno.serve(async (req) => {
 
     const pdfDoc = await PDFDocument.load(inputBytes);
     const pages = pdfDoc.getPages();
-
-    const target = field
-      ? { page: field.page, x: field.x, y: field.y, w: field.w, h: field.h }
-      : (() => {
-          // Sin campo definido: esquina inferior derecha de la última página.
-          const p = pages[pages.length - 1];
-          const { width } = p.getSize();
-          return { page: pages.length, x: width - 220, y: 60, w: 170, h: 55 };
-        })();
-
-    const page = pages[Math.min(Math.max(target.page, 1), pages.length) - 1];
-    const png = await pdfDoc.embedPng(decodeDataUrl(rubric));
-
-    // La rúbrica ocupa la parte alta del recuadro; abajo queda el pie de firma.
-    const captionH = 11;
-    const inkH = Math.max(10, target.h - captionH - 4);
-    const fit = Math.min(target.w / png.width, inkH / png.height);
-    const dw = png.width * fit;
-    const dh = png.height * fit;
-
-    page.drawImage(png, {
-      x: target.x + (target.w - dw) / 2,
-      y: target.y + captionH + 4 + (inkH - dh) / 2,
-      width: dw,
-      height: dh,
-    });
-
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const stamped = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    // Solo ASCII: Helvetica/WinAnsi no cubre todo y el pie debe ser fiable.
-    const caption = `${user.email ?? "firmante"} - ${pad(
-      stamped.getUTCDate()
-    )}/${pad(stamped.getUTCMonth() + 1)}/${stamped.getUTCFullYear()} ${pad(
-      stamped.getUTCHours()
-    )}:${pad(stamped.getUTCMinutes())} UTC`;
 
-    const captionSize = 6;
-    const captionW = font.widthOfTextAtSize(caption, captionSize);
-    page.drawLine({
-      start: { x: target.x, y: target.y + captionH + 2 },
-      end: { x: target.x + target.w, y: target.y + captionH + 2 },
-      thickness: 0.4,
-      color: rgb(0.45, 0.45, 0.45),
-    });
-    page.drawText(caption, {
-      x: target.x + Math.max(0, (target.w - captionW) / 2),
-      y: target.y + 3,
-      size: captionSize,
-      font,
-      color: rgb(0.32, 0.32, 0.32),
-    });
+    if (!seal) {
+      const target = field
+        ? { page: field.page, x: field.x, y: field.y, w: field.w, h: field.h }
+        : (() => {
+            // Sin campo definido: esquina inferior derecha de la última página.
+            const p = pages[pages.length - 1];
+            const { width } = p.getSize();
+            return { page: pages.length, x: width - 220, y: 60, w: 170, h: 55 };
+          })();
+
+      const page = pages[Math.min(Math.max(target.page, 1), pages.length) - 1];
+      const png = await pdfDoc.embedPng(decodeDataUrl(rubric));
+
+      // La rúbrica ocupa la parte alta del recuadro; abajo va el pie de firma.
+      const captionH = 11;
+      const inkH = Math.max(10, target.h - captionH - 4);
+      const fit = Math.min(target.w / png.width, inkH / png.height);
+      const dw = png.width * fit;
+      const dh = png.height * fit;
+
+      page.drawImage(png, {
+        x: target.x + (target.w - dw) / 2,
+        y: target.y + captionH + 4 + (inkH - dh) / 2,
+        width: dw,
+        height: dh,
+      });
+
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      // Solo ASCII: Helvetica/WinAnsi no cubre todo y el pie debe ser fiable.
+      const caption = `${user.email ?? "firmante"} - ${pad(
+        stamped.getUTCDate()
+      )}/${pad(stamped.getUTCMonth() + 1)}/${stamped.getUTCFullYear()} ${pad(
+        stamped.getUTCHours()
+      )}:${pad(stamped.getUTCMinutes())} UTC`;
+
+      const captionSize = 6;
+      const captionW = font.widthOfTextAtSize(caption, captionSize);
+      page.drawLine({
+        start: { x: target.x, y: target.y + captionH + 2 },
+        end: { x: target.x + target.w, y: target.y + captionH + 2 },
+        thickness: 0.4,
+        color: rgb(0.45, 0.45, 0.45),
+      });
+      page.drawText(caption, {
+        x: target.x + Math.max(0, (target.w - captionW) / 2),
+        y: target.y + 3,
+        size: captionSize,
+        font,
+        color: rgb(0.32, 0.32, 0.32),
+      });
+    }
 
     // ---- ¿Cierra el documento? -------------------------------------------
+    // El sello es el acto definitivo: a partir de ahí nadie puede tocar el PDF
+    // sin romper la firma. Por eso solo lo dispara quien manda en el documento.
+    // Si el último en firmar es un invitado, el documento queda completo pero
+    // abierto, esperando a que el propietario o un editor lo cierre.
     const remaining = fields.filter(
       (f) => !signedFieldIds.has(f.id) && f.id !== field?.id
     );
-    const complete = remaining.length === 0;
+    const complete = remaining.length === 0 && canEditFields;
 
     let outBytes: Uint8Array;
 
     if (complete) {
-      // Último firmante: se sella el documento entero, rúbricas incluidas.
+      // Cierre: se sella el documento entero, rúbricas incluidas.
       const p12b64 = Deno.env.get("SIGN_P12_BASE64");
       const p12pass = Deno.env.get("SIGN_P12_PASS");
       if (!p12b64 || !p12pass)
@@ -281,7 +309,7 @@ Deno.serve(async (req) => {
       pdflibAddPlaceholder({
         pdfDoc,
         reason: `Firmado en FirmaDrive por ${
-          (existing ?? []).length + 1
+          (existing ?? []).length + (seal ? 0 : 1)
         } firmante(s)`,
         contactInfo: user.email ?? "",
         name: user.email ?? "Firmante",
@@ -317,16 +345,25 @@ Deno.serve(async (req) => {
     const ip =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
-    const { error: sigErr } = await admin.from("signatures").insert({
-      document_id: doc.id,
-      field_id: field?.id ?? null,
-      signer_id: user.id,
-      signed_at: stamped.toISOString(),
-      ip,
-      cert_subject: complete ? "CN=FirmaDrive Dev Signer" : null,
-      tsa_token: null,
-    });
-    if (sigErr) console.error("signatures.insert:", sigErr);
+    if (seal) {
+      // Cerrar no añade una firma nueva: acredita las que ya estaban.
+      const { error: certErr } = await admin
+        .from("signatures")
+        .update({ cert_subject: "CN=FirmaDrive Dev Signer" })
+        .eq("document_id", doc.id);
+      if (certErr) console.error("signatures.update:", certErr);
+    } else {
+      const { error: sigErr } = await admin.from("signatures").insert({
+        document_id: doc.id,
+        field_id: field?.id ?? null,
+        signer_id: user.id,
+        signed_at: stamped.toISOString(),
+        ip,
+        cert_subject: complete ? "CN=FirmaDrive Dev Signer" : null,
+        tsa_token: null,
+      });
+      if (sigErr) console.error("signatures.insert:", sigErr);
+    }
 
     const { error: updErr } = await admin
       .from("documents")
@@ -341,7 +378,7 @@ Deno.serve(async (req) => {
     await admin.from("audit_log").insert({
       document_id: doc.id,
       actor_id: user.id,
-      action: complete ? "firmar_y_sellar" : "firmar",
+      action: seal ? "cerrar_y_sellar" : complete ? "firmar_y_sellar" : "firmar",
       ip,
       metadata: {
         email: user.email,

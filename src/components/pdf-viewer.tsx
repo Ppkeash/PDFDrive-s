@@ -42,6 +42,13 @@ export type PendingSignature = {
 /** Id reservado para la firma en curso; no existe en la base de datos. */
 const PENDING = "__pending__";
 
+/**
+ * Campo que se acaba de pedir y todavía no existe en la base de datos. Se pinta
+ * en el sitio exacto del clic: sin esto no pasa nada visible durante el guardado
+ * y la gente vuelve a hacer clic, creando recuadros de más.
+ */
+export type GhostField = { page: number; x: number; y: number };
+
 type PageInfo = { width: number; height: number };
 type Drag =
   | { id: string; mode: "move" | "resize"; startX: number; startY: number; box: FieldBox; page: number }
@@ -58,11 +65,14 @@ export function PdfViewer({
   onPendingChange,
   onPagesReady,
   highlightEmail,
+  ghost = null,
 }: {
   url: string;
   fields: SignField[];
   placing?: boolean;
   onPlace?: (page: number, x: number, y: number) => void;
+  /** Campo pedido y aún sin confirmar por el servidor. */
+  ghost?: GhostField | null;
   onRemove?: (id: string) => void;
   /** Si se pasa, los campos sin firmar se pueden mover y redimensionar. */
   onUpdate?: (id: string, box: FieldBox) => void;
@@ -321,7 +331,8 @@ export function PdfViewer({
             onPointerCancel={endDrag}
             className={cn(
               "relative shadow-card",
-              (placing || pending) && "cursor-crosshair"
+              (placing || pending) && "cursor-crosshair",
+              ghost && "cursor-wait"
             )}
             style={{ width: info.width * scale, height: info.height * scale }}
           >
@@ -356,6 +367,21 @@ export function PdfViewer({
                   }
                 />
               ))}
+
+            {/* Campo pedido, todavía guardándose. */}
+            {ghost && ghost.page === i + 1 && (
+              <div
+                style={{
+                  left: ghost.x * scale,
+                  top: (info.height - ghost.y - DEFAULT_FIELD.h) * scale,
+                  width: DEFAULT_FIELD.w * scale,
+                  height: DEFAULT_FIELD.h * scale,
+                }}
+                className="absolute flex animate-pulse items-center justify-center rounded-sm border-2 border-dashed border-seal/60 bg-seal/10"
+              >
+                <Spinner className="h-4 w-4 text-seal" />
+              </div>
+            )}
 
             {/* Firma trazada que se está colocando. */}
             {pending && pending.page === i + 1 && (
