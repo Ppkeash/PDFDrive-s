@@ -28,6 +28,7 @@ export function RubricPad({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
+  const lastMid = useRef<{ x: number; y: number } | null>(null);
   const bounds = useRef<{
     minX: number;
     minY: number;
@@ -88,6 +89,7 @@ export function RubricPad({
     drawing.current = true;
     const p = pointFrom(e);
     last.current = p;
+    lastMid.current = p;
     track(p);
 
     // Un toque suelto también deja marca (un punto).
@@ -109,19 +111,36 @@ export function RubricPad({
 
     const p = pointFrom(e);
     const mid = { x: (prev.x + p.x) / 2, y: (prev.y + p.y) / 2 };
+    const from = lastMid.current ?? prev;
 
+    // Cada tramo arranca en el punto medio anterior y termina en el nuevo,
+    // usando el punto real como control. Así el trazo queda continuo: partir
+    // siempre del punto real dejaba sin pintar media distancia entre eventos
+    // y la firma salía a rayas.
     ctx.beginPath();
-    ctx.moveTo(prev.x, prev.y);
+    ctx.moveTo(from.x, from.y);
     ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
     ctx.stroke();
 
+    lastMid.current = mid;
     last.current = p;
     track(p);
   }
 
   function end() {
+    // Cerrar el trazo hasta el último punto real, que si no queda cortado.
+    const ctx = canvasRef.current?.getContext("2d");
+    const from = lastMid.current;
+    const p = last.current;
+    if (ctx && from && p) {
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
     drawing.current = false;
     last.current = null;
+    lastMid.current = null;
   }
 
   function clear() {
@@ -133,6 +152,8 @@ export function RubricPad({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
     bounds.current = null;
+    lastMid.current = null;
+    last.current = null;
     setHasInk(false);
   }
 

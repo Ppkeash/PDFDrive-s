@@ -194,7 +194,9 @@ export function PdfViewer({
             />
 
             {fields
-              .filter((f) => f.page === i + 1)
+              // Un campo ya firmado no se dibuja: su rúbrica está estampada en
+              // el propio PDF, y el recuadro la taparía.
+              .filter((f) => f.page === i + 1 && !f.signed)
               .map((f) => (
                 <FieldBox
                   key={f.id}
@@ -242,25 +244,19 @@ function FieldBox({
       style={style}
       className={cn(
         "absolute flex items-center justify-center rounded-sm border-2 border-dashed text-center",
-        field.signed
-          ? "border-ok/60 bg-ok/5"
-          : mine
-            ? "border-seal bg-seal/10"
-            : "border-line-strong bg-ink/5"
+        mine ? "border-seal bg-seal/10" : "border-line-strong bg-ink/5"
       )}
     >
       <span
         className={cn(
           "pointer-events-none truncate px-1.5 text-[10px] font-medium",
-          field.signed ? "text-ok" : mine ? "text-seal" : "text-muted"
+          mine ? "text-seal" : "text-muted"
         )}
       >
-        {field.signed
-          ? "Firmado"
-          : (field.assigned_email ?? "Sin asignar")}
+        {field.assigned_email ?? "Sin asignar"}
       </span>
 
-      {onRemove && !field.signed && (
+      {onRemove && (
         <button
           onClick={(e) => {
             e.stopPropagation();
