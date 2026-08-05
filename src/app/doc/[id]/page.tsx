@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ShareDialog } from "@/components/share-dialog";
+import { ShareDialog, type ShareRow } from "@/components/share-dialog";
 import { DocumentWorkspace } from "@/components/document-workspace";
 import type { SignField } from "@/components/pdf-viewer";
-import type { DocStatus } from "@/types";
+import type { DocStatus, ShareRole } from "@/types";
 import { ArrowLeft, Download } from "lucide-react";
 
 export default async function DocumentPage({
@@ -36,11 +36,15 @@ export default async function DocumentPage({
     .from(viewBucket)
     .createSignedUrl(viewPath, 3600);
 
-  const [{ data: shares }, { data: fieldRows }, { data: signatureRows }] =
-    await Promise.all([
+  const [
+    { data: shareRows },
+    { data: fieldRows },
+    { data: signatureRows },
+    { data: ownerProfile },
+  ] = await Promise.all([
       supabase
         .from("document_shares")
-        .select("email, role")
+        .select("email, role, user_id")
         .eq("document_id", doc.id),
       supabase
         .from("signature_fields")
@@ -52,7 +56,26 @@ export default async function DocumentPage({
         .select("signer_id, field_id, signed_at, cert_subject")
         .eq("document_id", doc.id)
         .order("signed_at"),
+      supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", doc.owner_id)
+        .maybeSingle(),
     ]);
+
+  // `pending` = invitado sin cuenta todavía; el trigger link_pending_shares la
+  // enlazará cuando se registre con ese mismo correo.
+  const shares: ShareRow[] = (shareRows ?? []).map((s) => ({
+    email: s.email,
+    role: s.role,
+    pending: !s.user_id,
+  }));
+
+  const myEmail = user?.email?.toLowerCase() ?? "";
+  const role: ShareRole = isOwner
+    ? "propietario"
+    : ((shares.find((s) => s.email.toLowerCase() === myEmail)
+        ?.role as ShareRole) ?? "lector");
 
   const signatures = signatureRows ?? [];
   const signedFieldIds = new Set(
@@ -111,7 +134,13 @@ export default async function DocumentPage({
               <span className="hidden sm:inline">Descargar</span>
             </a>
           )}
-          {isOwner && <ShareDialog documentId={doc.id} />}
+          {isOwner && (
+            <ShareDialog
+              documentId={doc.id}
+              shares={shares}
+              ownerEmail={ownerProfile?.email ?? user?.email ?? ""}
+            />
+          )}
         </div>
       </header>
 
@@ -120,11 +149,13 @@ export default async function DocumentPage({
           documentId={doc.id}
           url={signedUrl?.signedUrl ?? null}
           isOwner={isOwner}
+          role={role}
           status={doc.status as DocStatus}
           sealed={sealed}
           fields={fields}
           signers={signatures}
-          shares={shares ?? []}
+          shares={shares}
+          ownerEmail={ownerProfile?.email ?? ""}
           userEmail={user?.email ?? ""}
         />
       ) : (

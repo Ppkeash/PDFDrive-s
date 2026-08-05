@@ -74,10 +74,12 @@ export async function softDeleteDocument(id: string) {
   return {};
 }
 
+type ShareRole = "editor" | "firmante" | "lector";
+
 export async function shareDocument(
   documentId: string,
   email: string,
-  role: "editor" | "firmante" | "lector"
+  role: ShareRole
 ) {
   const supabase = createClient();
   const {
@@ -116,4 +118,81 @@ export async function shareDocument(
 
   revalidatePath(`/doc/${documentId}`);
   return { pending: !profile };
+}
+
+/** Cambia el permiso de alguien que ya tiene acceso. */
+export async function updateShareRole(
+  documentId: string,
+  email: string,
+  role: ShareRole
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado" };
+
+  const clean = email.trim().toLowerCase();
+  const { error } = await supabase
+    .from("document_shares")
+    .update({ role })
+    .eq("document_id", documentId)
+    .eq("email", clean);
+  if (error) return { error: error.message };
+
+  await supabase.from("audit_log").insert({
+    document_id: documentId,
+    actor_id: user.id,
+    action: "cambiar_permiso",
+    metadata: { email: clean, role },
+  });
+
+  revalidatePath(`/doc/${documentId}`);
+  return {};
+}
+
+/**
+ * Quita el acceso. Se llevan por delante los campos de firma que esa persona
+ * tuviera pendientes: si se quedaran ahí, nadie podría firmarlos y el documento
+ * jamás llegaría a sellarse. Los ya firmados no se tocan — son la prueba.
+ */
+export async function removeShare(documentId: string, email: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado" };
+
+  const clean = email.trim().toLowerCase();
+
+  const { data: fields } = await supabase
+    .from("signature_fields")
+    .select("id, signatures ( id )")
+    .eq("document_id", documentId)
+    .eq("assigned_email", clean);
+
+  const orphans = (fields ?? [])
+    .filter((f) => ((f.signatures as unknown[]) ?? []).length === 0)
+    .map((f) => f.id);
+
+  if (orphans.length > 0) {
+    await supabase.from("signature_fields").delete().in("id", orphans);
+  }
+
+  const { error } = await supabase
+    .from("document_shares")
+    .delete()
+    .eq("document_id", documentId)
+    .eq("email", clean);
+  if (error) return { error: error.message };
+
+  await supabase.from("audit_log").insert({
+    document_id: documentId,
+    actor_id: user.id,
+    action: "quitar_acceso",
+    metadata: { email: clean, campos_eliminados: orphans.length },
+  });
+
+  revalidatePath(`/doc/${documentId}`);
+  return { removedFields: orphans.length };
 }

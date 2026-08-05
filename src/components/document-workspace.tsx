@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { RubricPad } from "@/components/rubric-pad";
 import { StatusChip } from "@/components/status-chip";
-import { ShareDialog } from "@/components/share-dialog";
+import { ShareDialog, type ShareRow } from "@/components/share-dialog";
 import { Spinner } from "@/components/spinner";
 import {
   DEFAULT_FIELD,
@@ -15,7 +15,8 @@ import {
   type SignField,
 } from "@/components/pdf-viewer";
 import { cn } from "@/lib/utils";
-import type { DocStatus } from "@/types";
+import { canEdit, canSign as roleCanSign, roleLabel } from "@/lib/roles";
+import type { DocStatus, ShareRole } from "@/types";
 import {
   BadgeCheck,
   Check,
@@ -69,21 +70,26 @@ export function DocumentWorkspace({
   documentId,
   url,
   isOwner,
+  role,
   status,
   sealed,
   fields,
   signers,
   shares,
+  ownerEmail,
   userEmail,
 }: {
   documentId: string;
   url: string | null;
   isOwner: boolean;
+  /** Permiso de quien está mirando: decide qué puede hacer, no solo qué ve. */
+  role: ShareRole;
   status: DocStatus;
   sealed: boolean;
   fields: SignField[];
   signers: Signer[];
-  shares: { email: string; role: string }[];
+  shares: ShareRow[];
+  ownerEmail: string;
   userEmail: string;
 }) {
   const router = useRouter();
@@ -119,12 +125,23 @@ export function DocumentWorkspace({
   const pendingCount = fields.filter((f) => !f.signed).length;
   const noFields = fields.length === 0;
 
+  // Ya firmé si alguno de mis campos está firmado: el firmante firma una vez,
+  // el dueño puede añadir tantas rúbricas como quiera.
+  const alreadySigned = fields.some(
+    (f) =>
+      f.signed &&
+      f.assigned_email?.trim().toLowerCase() === userEmail.toLowerCase()
+  );
+
   // Con un sitio ya reservado se firma ahí; si no, se traza la rúbrica y se
-  // coloca a mano sobre el documento. Quien no es dueño ni tiene campo asignado
-  // no puede firmar: crear campos es potestad del dueño (lo impone la RLS).
-  const signableField = myField ?? (isOwner ? unassignedPending : null);
-  const canSign = !sealed && (signableField !== null || isOwner);
-  const canEditFields = isOwner && !sealed;
+  // coloca a mano sobre el documento (la RLS deja crear un campo propio a
+  // cualquiera que pueda firmar). El lector no firma en ningún caso.
+  const signableField = myField ?? (canEdit(role) ? unassignedPending : null);
+  const canSign =
+    !sealed &&
+    roleCanSign(role) &&
+    (signableField !== null || isOwner || !alreadySigned);
+  const canEditFields = canEdit(role) && !sealed;
 
   const candidates = useMemo(() => {
     const set = new Set<string>([userEmail, ...shares.map((s) => s.email)]);
@@ -363,7 +380,7 @@ export function DocumentWorkspace({
           )}
 
           {/* Colocar campos */}
-          {isOwner && !sealed && (
+          {canEditFields && (
             <section className="flex flex-col gap-2.5">
               <h2 className="text-micro uppercase text-muted">
                 Campos de firma
@@ -475,13 +492,11 @@ export function DocumentWorkspace({
 
             {!canSign && !sealed && (
               <p className="text-sm text-muted">
-                {fields.some(
-                  (f) =>
-                    f.signed &&
-                    f.assigned_email?.toLowerCase() === userEmail.toLowerCase()
-                )
-                  ? "Ya firmaste. Falta que firmen los demás."
-                  : "El dueño todavía no te ha asignado un campo de firma."}
+                {!roleCanSign(role)
+                  ? "Tienes permiso de lectura: puedes ver y descargar, pero no firmar. Pídele al dueño que te cambie el permiso a firmante."
+                  : alreadySigned
+                    ? "Ya firmaste. Falta que firmen los demás."
+                    : "El dueño todavía no te ha asignado un campo de firma."}
               </p>
             )}
 
@@ -544,13 +559,25 @@ export function DocumentWorkspace({
           <section className="border-t border-line pt-5">
             <div className="flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 text-micro uppercase text-muted">
-                <Users className="h-3.5 w-3.5" /> Con acceso ({shares.length})
+                {/* Quien no es dueño solo ve su propia fila: la RLS no le
+                    enseña con quién más está compartido. */}
+                <Users className="h-3.5 w-3.5" />{" "}
+                {isOwner ? `Con acceso (${shares.length + 1})` : "Tu acceso"}
               </h2>
-              {isOwner && <ShareDialog documentId={documentId} compact />}
+              {isOwner && (
+                <ShareDialog
+                  documentId={documentId}
+                  shares={shares}
+                  ownerEmail={ownerEmail || userEmail}
+                  compact
+                />
+              )}
             </div>
             {shares.length === 0 ? (
               <p className="mt-2.5 text-sm text-muted">
-                Solo tú puedes ver este documento.
+                {isOwner
+                  ? "Solo tú puedes ver este documento."
+                  : `Tu permiso: ${roleLabel(role).toLowerCase()}.`}
               </p>
             ) : (
               <ul className="mt-2.5 flex flex-col gap-1">
@@ -559,9 +586,16 @@ export function DocumentWorkspace({
                     key={s.email}
                     className="flex items-center justify-between gap-2 rounded border border-line bg-surface-2 px-3 py-2"
                   >
-                    <span className="min-w-0 truncate text-sm">{s.email}</span>
-                    <span className="shrink-0 text-xs capitalize text-muted">
-                      {s.role}
+                    <span className="min-w-0 truncate text-sm">
+                      {s.email}
+                      {s.pending && (
+                        <span className="ml-1.5 text-xs text-wait">
+                          (pendiente)
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted">
+                      {roleLabel(s.role)}
                     </span>
                   </li>
                 ))}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { StatusChip } from "@/components/status-chip";
+import { roleLabel } from "@/lib/roles";
 import { Inbox } from "lucide-react";
 import type { DocStatus } from "@/types";
 
@@ -57,8 +58,8 @@ export default async function SharedPage() {
                     <span className="block truncate text-sm font-medium">
                       {doc.name}
                     </span>
-                    <span className="mt-0.5 block text-xs capitalize text-muted">
-                      Tu permiso: {s.role}
+                    <span className="mt-0.5 block text-xs text-muted">
+                      Tu permiso: {roleLabel(s.role)}
                     </span>
                   </span>
                   <StatusChip status={doc.status as DocStatus} />

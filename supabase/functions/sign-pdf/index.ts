@@ -106,6 +106,30 @@ Deno.serve(async (req) => {
     const isOwner = doc.owner_id === user.id;
     const admin = createClient(url, service);
 
+    // ---- Permiso ---------------------------------------------------------
+    // La RLS ya bloquea al lector, pero el error que devolvería sería opaco.
+    // Aquí se decide explícitamente y con un mensaje que se entiende.
+    let role = "propietario";
+    if (!isOwner) {
+      const { data: share } = await admin
+        .from("document_shares")
+        .select("role")
+        .eq("document_id", doc.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      role = share?.role ?? "";
+      if (!role) return json({ error: "No tienes acceso a este documento" }, 403);
+      if (role === "lector")
+        return json(
+          {
+            error:
+              "Tu permiso es de solo lectura. Pide que te cambien a firmante.",
+          },
+          403
+        );
+    }
+    const canEditFields = role === "propietario" || role === "editor";
+
     // ---- Qué campo le corresponde firmar a esta persona -------------------
     const { data: fieldRows } = await admin
       .from("signature_fields")
@@ -136,7 +160,7 @@ Deno.serve(async (req) => {
             (f) =>
               !signedFieldIds.has(f.id) && sameEmail(f.assigned_email, user.email)
           ) ??
-          (isOwner
+          (canEditFields
             ? fields.find(
                 (f) => !signedFieldIds.has(f.id) && !f.assigned_email
               ) ?? null
@@ -151,11 +175,11 @@ Deno.serve(async (req) => {
       if (signedFieldIds.has(field.id))
         return json({ error: "Ese campo ya está firmado." }, 409);
 
-      // Un campo asignado solo lo firma su destinatario. El dueño puede cubrir
-      // los que quedaron sin asignar, pero no suplantar a nadie.
+      // Un campo asignado solo lo firma su destinatario. Dueño y editor pueden
+      // cubrir los que quedaron sin asignar, pero no suplantar a nadie.
       const allowed = field.assigned_email
         ? sameEmail(field.assigned_email, user.email)
-        : isOwner;
+        : canEditFields;
       if (!allowed)
         return json(
           { error: `Este campo le corresponde a ${field.assigned_email}.` },
