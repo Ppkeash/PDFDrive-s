@@ -32,6 +32,16 @@ export const DEFAULT_FIELD = { w: 170, h: 55 };
 const MIN_W = 70;
 const MIN_H = 28;
 
+/** Firma ya trazada que se está colocando, antes de confirmarla. */
+export type PendingSignature = {
+  src: string;
+  page: number;
+  box: FieldBox;
+};
+
+/** Id reservado para la firma en curso; no existe en la base de datos. */
+const PENDING = "__pending__";
+
 type PageInfo = { width: number; height: number };
 type Drag =
   | { id: string; mode: "move" | "resize"; startX: number; startY: number; box: FieldBox; page: number }
@@ -44,6 +54,9 @@ export function PdfViewer({
   onPlace,
   onRemove,
   onUpdate,
+  pending,
+  onPendingChange,
+  onPagesReady,
   highlightEmail,
 }: {
   url: string;
@@ -53,6 +66,11 @@ export function PdfViewer({
   onRemove?: (id: string) => void;
   /** Si se pasa, los campos sin firmar se pueden mover y redimensionar. */
   onUpdate?: (id: string, box: FieldBox) => void;
+  /** Firma trazada que el usuario está colocando sobre el documento. */
+  pending?: PendingSignature | null;
+  onPendingChange?: (page: number, box: FieldBox) => void;
+  /** Tamaño de cada página en puntos, para poder centrar cosas desde fuera. */
+  onPagesReady?: (pages: { width: number; height: number }[]) => void;
   highlightEmail?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,6 +91,18 @@ export function PdfViewer({
   // nuevo; para entonces el estado de arrastre ya se limpió, así que hace
   // falta esta marca para descartarlo.
   const swallowClick = useRef(false);
+  // Vía ref para no re-cargar el PDF cada vez que el padre recrea la función.
+  const onPagesReadyRef = useRef(onPagesReady);
+  onPagesReadyRef.current = onPagesReady;
+
+  // La firma en curso puede caer fuera de la pantalla (las páginas son altas):
+  // sin esto el usuario traza su firma, pulsa Continuar y no ve nada.
+  const pendingRef = useRef<HTMLDivElement>(null);
+  const pendingPage = pending?.page ?? null;
+  useEffect(() => {
+    if (pendingPage === null) return;
+    pendingRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [pendingPage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +122,7 @@ export function PdfViewer({
         }
         if (cancelled) return;
         setPages(infos);
+        onPagesReadyRef.current?.(infos);
         setLoading(false);
       })
       .catch((err) => {
@@ -163,23 +194,21 @@ export function PdfViewer({
     [overrides]
   );
 
+  const pendingBox = pending
+    ? (overrides[PENDING] ?? pending.box)
+    : { x: 0, y: 0, w: 0, h: 0 };
+
   function startDrag(
     e: React.PointerEvent,
-    field: SignField,
+    id: string,
+    page: number,
+    box: FieldBox,
     mode: "move" | "resize"
   ) {
-    if (!onUpdate || field.signed) return;
     e.stopPropagation();
     e.preventDefault();
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    setDrag({
-      id: field.id,
-      mode,
-      startX: e.clientX,
-      startY: e.clientY,
-      box: boxOf(field),
-      page: field.page,
-    });
+    setDrag({ id, mode, startX: e.clientX, startY: e.clientY, box, page });
   }
 
   function onDragMove(e: React.PointerEvent) {
@@ -215,7 +244,10 @@ export function PdfViewer({
   function endDrag() {
     if (!drag) return;
     const box = overrides[drag.id];
-    if (box && onUpdate) onUpdate(drag.id, box);
+    if (box) {
+      if (drag.id === PENDING) onPendingChange?.(drag.page, box);
+      else onUpdate?.(drag.id, box);
+    }
     swallowClick.current = true;
     setDrag(null);
   }
@@ -228,19 +260,37 @@ export function PdfViewer({
       swallowClick.current = false;
       return;
     }
-    if (!placing || !onPlace || drag) return;
+    if (drag) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
     const cssX = e.clientX - rect.left;
     const cssY = e.clientY - rect.top;
     const info = pages[pageIndex];
 
-    const x = cssX / scale - DEFAULT_FIELD.w / 2;
-    const y = info.height - cssY / scale - DEFAULT_FIELD.h / 2;
+    // Con una firma en curso, el clic la lleva ahí: así se puede saltar de
+    // página sin tener que arrastrarla por todo el documento.
+    if (pending && onPendingChange) {
+      const b = pendingBox;
+      const next = {
+        w: b.w,
+        h: b.h,
+        x: clamp(cssX / scale - b.w / 2, 0, info.width - b.w),
+        y: clamp(info.height - cssY / scale - b.h / 2, 0, info.height - b.h),
+      };
+      setOverrides((o) => ({ ...o, [PENDING]: next }));
+      onPendingChange(pageIndex + 1, next);
+      return;
+    }
 
+    if (!placing || !onPlace) return;
     onPlace(
       pageIndex + 1,
-      Math.max(0, Math.min(x, info.width - DEFAULT_FIELD.w)),
-      Math.max(0, Math.min(y, info.height - DEFAULT_FIELD.h))
+      clamp(cssX / scale - DEFAULT_FIELD.w / 2, 0, info.width - DEFAULT_FIELD.w),
+      clamp(
+        info.height - cssY / scale - DEFAULT_FIELD.h / 2,
+        0,
+        info.height - DEFAULT_FIELD.h
+      )
     );
   }
 
@@ -269,7 +319,10 @@ export function PdfViewer({
             onPointerMove={onDragMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
-            className={cn("relative shadow-card", placing && "cursor-crosshair")}
+            className={cn(
+              "relative shadow-card",
+              (placing || pending) && "cursor-crosshair"
+            )}
             style={{ width: info.width * scale, height: info.height * scale }}
           >
             <canvas
@@ -286,14 +339,16 @@ export function PdfViewer({
               .map((f) => (
                 <Box
                   key={f.id}
-                  field={f}
+                  label={f.assigned_email ?? "Sin asignar"}
                   box={boxOf(f)}
                   scale={scale}
                   pageHeight={info.height}
-                  editable={!!onUpdate}
+                  editable={!!onUpdate && !pending}
                   dragging={drag?.id === f.id}
-                  onRemove={onRemove}
-                  onStart={startDrag}
+                  onRemove={onRemove ? () => onRemove(f.id) : undefined}
+                  onStart={(e, mode) =>
+                    startDrag(e, f.id, f.page, boxOf(f), mode)
+                  }
                   mine={
                     !!highlightEmail &&
                     f.assigned_email?.toLowerCase() ===
@@ -301,6 +356,23 @@ export function PdfViewer({
                   }
                 />
               ))}
+
+            {/* Firma trazada que se está colocando. */}
+            {pending && pending.page === i + 1 && (
+              <Box
+                innerRef={pendingRef}
+                box={pendingBox}
+                scale={scale}
+                pageHeight={info.height}
+                editable
+                dragging={drag?.id === PENDING}
+                onStart={(e, mode) =>
+                  startDrag(e, PENDING, pending.page, pendingBox, mode)
+                }
+                mine
+                image={pending.src}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -308,8 +380,13 @@ export function PdfViewer({
   );
 }
 
+const clamp = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(v, Math.max(min, max)));
+
 function Box({
-  field,
+  label,
+  image,
+  innerRef,
   box,
   scale,
   pageHeight,
@@ -319,18 +396,17 @@ function Box({
   onStart,
   mine,
 }: {
-  field: SignField;
+  label?: string;
+  /** Si se pasa, el recuadro muestra la rúbrica en vez del email. */
+  image?: string;
+  innerRef?: React.Ref<HTMLDivElement>;
   box: FieldBox;
   scale: number;
   pageHeight: number;
   editable: boolean;
   dragging: boolean;
-  onRemove?: (id: string) => void;
-  onStart: (
-    e: React.PointerEvent,
-    field: SignField,
-    mode: "move" | "resize"
-  ) => void;
+  onRemove?: () => void;
+  onStart: (e: React.PointerEvent, mode: "move" | "resize") => void;
   mine: boolean;
 }) {
   // Puntos PDF (origen abajo) → CSS (origen arriba).
@@ -343,32 +419,44 @@ function Box({
 
   return (
     <div
+      ref={innerRef}
       style={style}
-      onPointerDown={(e) => editable && onStart(e, field, "move")}
+      onPointerDown={(e) => editable && onStart(e, "move")}
       onClick={(e) => e.stopPropagation()}
       className={cn(
         "absolute flex touch-none select-none items-center justify-center rounded-sm border-2 border-dashed text-center",
-        mine ? "border-seal bg-seal/10" : "border-line-strong bg-ink/5",
+        mine ? "border-seal" : "border-line-strong",
+        image ? "bg-seal/5" : mine ? "bg-seal/10" : "bg-ink/5",
         editable && (dragging ? "cursor-grabbing" : "cursor-grab"),
         dragging && "ring-2 ring-seal/40"
       )}
     >
-      <span
-        className={cn(
-          "pointer-events-none truncate px-1.5 text-[10px] font-medium",
-          mine ? "text-seal" : "text-muted"
-        )}
-      >
-        {field.assigned_email ?? "Sin asignar"}
-      </span>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={image}
+          alt="Tu firma"
+          draggable={false}
+          className="pointer-events-none h-full w-full object-contain p-1"
+        />
+      ) : (
+        <span
+          className={cn(
+            "pointer-events-none truncate px-1.5 text-[10px] font-medium",
+            mine ? "text-seal" : "text-muted"
+          )}
+        >
+          {label}
+        </span>
+      )}
 
       {editable && (
         <>
           {/* Tirador de tamaño, abajo a la derecha. */}
           <span
-            onPointerDown={(e) => onStart(e, field, "resize")}
+            onPointerDown={(e) => onStart(e, "resize")}
             role="button"
-            aria-label={`Cambiar tamaño del campo de ${field.assigned_email ?? "sin asignar"}`}
+            aria-label="Cambiar tamaño"
             className={cn(
               "absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm border-2 bg-surface",
               mine ? "border-seal" : "border-line-strong"
@@ -379,9 +467,9 @@ function Box({
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                onRemove(field.id);
+                onRemove();
               }}
-              aria-label={`Quitar campo de ${field.assigned_email ?? "sin asignar"}`}
+              aria-label={`Quitar campo de ${label ?? "sin asignar"}`}
               className="absolute -right-2.5 -top-2.5 rounded-full border border-line bg-surface p-0.5 text-muted shadow-card transition-colors hover:text-danger"
             >
               <X className="h-3 w-3" />

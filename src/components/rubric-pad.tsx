@@ -18,12 +18,16 @@ export function RubricPad({
   onConfirm,
   busy,
   title = "Dibuja tu firma",
+  confirmLabel = "Firmar documento",
+  busyLabel = "Firmando…",
 }: {
   open: boolean;
   onCancel: () => void;
   onConfirm: (pngDataUrl: string) => void;
   busy?: boolean;
   title?: string;
+  confirmLabel?: string;
+  busyLabel?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -241,7 +245,7 @@ export function RubricPad({
               className="inline-flex h-10 items-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {busy && <Spinner />}
-              {busy ? "Firmando…" : "Firmar documento"}
+              {busy ? busyLabel : confirmLabel}
             </button>
           </div>
         </div>

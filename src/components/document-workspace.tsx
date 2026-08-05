@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -8,7 +8,12 @@ import { RubricPad } from "@/components/rubric-pad";
 import { StatusChip } from "@/components/status-chip";
 import { ShareDialog } from "@/components/share-dialog";
 import { Spinner } from "@/components/spinner";
-import { DEFAULT_FIELD, type SignField } from "@/components/pdf-viewer";
+import {
+  DEFAULT_FIELD,
+  type FieldBox,
+  type PendingSignature,
+  type SignField,
+} from "@/components/pdf-viewer";
 import { cn } from "@/lib/utils";
 import type { DocStatus } from "@/types";
 import {
@@ -87,6 +92,9 @@ export function DocumentWorkspace({
   const [placing, setPlacing] = useState(false);
   const [assignTo, setAssignTo] = useState(userEmail);
   const [padOpen, setPadOpen] = useState(false);
+  // Firma ya trazada que el usuario está colocando sobre el documento.
+  const [pending, setPending] = useState<PendingSignature | null>(null);
+  const pageSizes = useRef<{ width: number; height: number }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
@@ -111,10 +119,11 @@ export function DocumentWorkspace({
   const pendingCount = fields.filter((f) => !f.signed).length;
   const noFields = fields.length === 0;
 
-  // Solo se firma sobre un campo colocado: así quien firma decide dónde cae
-  // su rúbrica y de qué tamaño, en vez de que la app la ponga por su cuenta.
+  // Con un sitio ya reservado se firma ahí; si no, se traza la rúbrica y se
+  // coloca a mano sobre el documento. Quien no es dueño ni tiene campo asignado
+  // no puede firmar: crear campos es potestad del dueño (lo impone la RLS).
   const signableField = myField ?? (isOwner ? unassignedPending : null);
-  const canSign = !sealed && signableField !== null;
+  const canSign = !sealed && (signableField !== null || isOwner);
   const canEditFields = isOwner && !sealed;
 
   const candidates = useMemo(() => {
@@ -168,25 +177,89 @@ export function DocumentWorkspace({
     router.refresh();
   }
 
-  async function submitRubric(png: string) {
+  /** Envía la rúbrica al servidor para estamparla en `fieldId`. */
+  async function sign(fieldId: string | null, png: string) {
     setBusy(true);
     setError(null);
     const { data, error } = await supabase.functions.invoke("sign-pdf", {
-      body: {
-        documentId,
-        fieldId: signableField?.id ?? null,
-        rubric: png,
-      },
+      body: { documentId, fieldId, rubric: png },
     });
     setBusy(false);
 
     if (error || data?.error) {
       setError(data?.error ?? error?.message ?? "No se pudo firmar.");
-      return;
+      return false;
     }
     setPadOpen(false);
+    setPending(null);
     setVerify(null);
     router.refresh();
+    return true;
+  }
+
+  /**
+   * Al terminar de trazar: si el dueño ya reservó un sitio para esta persona,
+   * se firma ahí directamente. Si no, la rúbrica pasa a colocarse sobre el
+   * documento para que quien firma elija dónde y de qué tamaño.
+   */
+  async function submitRubric(png: string) {
+    if (signableField) {
+      await sign(signableField.id, png);
+      return;
+    }
+
+    const size = await new Promise<{ w: number; h: number }>((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        // Alto fijo cómodo; el ancho sale de la proporción del trazo.
+        const h = DEFAULT_FIELD.h;
+        const ratio = img.width / Math.max(img.height, 1);
+        resolve({ w: Math.min(340, Math.max(90, h * ratio)), h });
+      };
+      img.onerror = () => resolve({ w: DEFAULT_FIELD.w, h: DEFAULT_FIELD.h });
+      img.src = png;
+    });
+
+    const page = pageSizes.current[0] ?? { width: 595, height: 842 };
+    setPending({
+      src: png,
+      page: 1,
+      box: {
+        ...size,
+        x: (page.width - size.w) / 2,
+        y: page.height * 0.35,
+      },
+    });
+    setPadOpen(false);
+  }
+
+  /** Crea el campo donde el usuario dejó la firma y la estampa allí. */
+  async function confirmPending() {
+    if (!pending) return;
+    setBusy(true);
+    setError(null);
+
+    const { data: created, error: insErr } = await supabase
+      .from("signature_fields")
+      .insert({
+        document_id: documentId,
+        page: pending.page,
+        x: Math.round(pending.box.x * 100) / 100,
+        y: Math.round(pending.box.y * 100) / 100,
+        w: Math.round(pending.box.w * 100) / 100,
+        h: Math.round(pending.box.h * 100) / 100,
+        assigned_email: userEmail,
+        order_index: fields.length,
+      })
+      .select("id")
+      .single();
+
+    if (insErr || !created) {
+      setBusy(false);
+      return setError(insErr?.message ?? "No se pudo guardar la posición.");
+    }
+
+    await sign(created.id, pending.src);
   }
 
   async function runVerify() {
@@ -203,21 +276,57 @@ export function DocumentWorkspace({
     <div className="flex flex-1 flex-col lg:flex-row">
       {/* Visor */}
       <div className="min-w-0 flex-1 bg-paper p-4 sm:p-5">
-        {placing && (
+        {pending && (
+          // Fija: al colocar la firma se navega por el documento, y el botón
+          // de confirmar tiene que seguir a mano.
+          <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-3 rounded border border-seal/30 border-l-2 border-l-seal bg-seal-soft px-3 py-2.5 shadow-pop">
+            <p className="flex-1 text-sm text-seal">
+              Arrastra tu firma donde quieras, tira de la esquina para el
+              tamaño, o haz clic en otro punto del documento.
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <button
+                onClick={() => setPending(null)}
+                disabled={busy}
+                className="inline-flex h-9 items-center rounded border border-line-strong bg-surface px-3 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmPending}
+                disabled={busy}
+                className="inline-flex h-9 items-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {busy && <Spinner />}
+                {busy ? "Firmando…" : "Confirmar firma"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {placing && !pending && (
           <p className="mb-3 flex items-center gap-2 rounded border-l-2 border-seal bg-seal-soft px-3 py-2 text-sm text-seal">
             <MapPin className="h-4 w-4 shrink-0" />
             Haz clic en el punto exacto donde debe firmar{" "}
             <strong className="font-medium">{assignTo}</strong>.
           </p>
         )}
+
         {url ? (
           <PdfViewer
             url={url}
             fields={fields}
-            placing={placing && canEditFields}
+            placing={placing && canEditFields && !pending}
             onPlace={addField}
             onRemove={canEditFields ? removeField : undefined}
             onUpdate={canEditFields ? updateField : undefined}
+            pending={pending}
+            onPendingChange={(page, box: FieldBox) =>
+              setPending((p) => (p ? { ...p, page, box } : p))
+            }
+            onPagesReady={(p) => {
+              pageSizes.current = p;
+            }}
             highlightEmail={userEmail}
           />
         ) : (
@@ -349,13 +458,19 @@ export function DocumentWorkspace({
 
           {/* Acciones */}
           <section className="flex flex-col gap-2">
-            {canSign && (
+            {canSign && !pending && (
               <button
                 onClick={() => setPadOpen(true)}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90"
               >
                 <PenLine className="h-4 w-4" /> Firmar
               </button>
+            )}
+
+            {canSign && !pending && !signableField && (
+              <p className="text-xs text-muted">
+                Trazas tu firma y luego la colocas donde quieras.
+              </p>
             )}
 
             {!canSign && !sealed && (
@@ -366,9 +481,7 @@ export function DocumentWorkspace({
                     f.assigned_email?.toLowerCase() === userEmail.toLowerCase()
                 )
                   ? "Ya firmaste. Falta que firmen los demás."
-                  : isOwner
-                    ? "Coloca tu campo sobre el documento, ajústalo, y ahí podrás firmar."
-                    : "El dueño todavía no te ha asignado un campo de firma."}
+                  : "El dueño todavía no te ha asignado un campo de firma."}
               </p>
             )}
 
@@ -468,6 +581,10 @@ export function DocumentWorkspace({
             ? `Firma de ${signableField.assigned_email}`
             : "Dibuja tu firma"
         }
+        // Sin sitio reservado, trazar es solo el primer paso: después hay que
+        // colocarla, así que el botón no debe prometer que ya se firmó.
+        confirmLabel={signableField ? "Firmar documento" : "Continuar"}
+        busyLabel={signableField ? "Firmando…" : "Un momento…"}
       />
     </div>
   );
