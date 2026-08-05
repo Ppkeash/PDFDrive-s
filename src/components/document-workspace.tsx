@@ -111,11 +111,11 @@ export function DocumentWorkspace({
   const pendingCount = fields.filter((f) => !f.signed).length;
   const noFields = fields.length === 0;
 
-  // Puedo firmar si tengo campo propio pendiente, o si soy el dueño y hay un
-  // campo sin asignar, o si el documento no tiene campos y soy el dueño.
+  // Solo se firma sobre un campo colocado: así quien firma decide dónde cae
+  // su rúbrica y de qué tamaño, en vez de que la app la ponga por su cuenta.
   const signableField = myField ?? (isOwner ? unassignedPending : null);
-  const canSign =
-    !sealed && (signableField !== null || (noFields && isOwner));
+  const canSign = !sealed && signableField !== null;
+  const canEditFields = isOwner && !sealed;
 
   const candidates = useMemo(() => {
     const set = new Set<string>([userEmail, ...shares.map((s) => s.email)]);
@@ -145,6 +145,24 @@ export function DocumentWorkspace({
     const { error } = await supabase
       .from("signature_fields")
       .delete()
+      .eq("id", id);
+    if (error) return setError(error.message);
+    router.refresh();
+  }
+
+  /** Guarda la posición y el tamaño tras mover o redimensionar el campo. */
+  async function updateField(
+    id: string,
+    box: { x: number; y: number; w: number; h: number }
+  ) {
+    const { error } = await supabase
+      .from("signature_fields")
+      .update({
+        x: Math.round(box.x * 100) / 100,
+        y: Math.round(box.y * 100) / 100,
+        w: Math.round(box.w * 100) / 100,
+        h: Math.round(box.h * 100) / 100,
+      })
       .eq("id", id);
     if (error) return setError(error.message);
     router.refresh();
@@ -196,9 +214,10 @@ export function DocumentWorkspace({
           <PdfViewer
             url={url}
             fields={fields}
-            placing={placing && isOwner && !sealed}
+            placing={placing && canEditFields}
             onPlace={addField}
-            onRemove={isOwner && !sealed ? removeField : undefined}
+            onRemove={canEditFields ? removeField : undefined}
+            onUpdate={canEditFields ? updateField : undefined}
             highlightEmail={userEmail}
           />
         ) : (
@@ -220,7 +239,7 @@ export function DocumentWorkspace({
           {!sealed && (
             <p className="text-sm text-muted">
               {noFields
-                ? "Sin campos de firma. Colócalos sobre el documento, o firma tú directamente."
+                ? "Todavía no hay campos. Marca sobre el documento dónde va cada firma."
                 : pendingCount === 0
                   ? "Todos los campos están firmados."
                   : `Faltan ${pendingCount} de ${fields.length} firmas.`}
@@ -274,10 +293,18 @@ export function DocumentWorkspace({
                   </>
                 ) : (
                   <>
-                    <MapPin className="h-4 w-4" /> Colocar campo
+                    <MapPin className="h-4 w-4" />
+                    {noFields ? "Colocar mi firma" : "Colocar campo"}
                   </>
                 )}
               </button>
+
+              {pendingCount > 0 && (
+                <p className="text-xs text-muted">
+                  Arrastra un recuadro para moverlo, o tira de su esquina para
+                  cambiar el tamaño.
+                </p>
+              )}
             </section>
           )}
 
@@ -339,7 +366,9 @@ export function DocumentWorkspace({
                     f.assigned_email?.toLowerCase() === userEmail.toLowerCase()
                 )
                   ? "Ya firmaste. Falta que firmen los demás."
-                  : "No tienes ningún campo pendiente en este documento."}
+                  : isOwner
+                    ? "Coloca tu campo sobre el documento, ajústalo, y ahí podrás firmar."
+                    : "El dueño todavía no te ha asignado un campo de firma."}
               </p>
             )}
 

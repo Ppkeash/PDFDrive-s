@@ -25,10 +25,17 @@ export type SignField = {
   signed?: boolean;
 };
 
+export type FieldBox = { x: number; y: number; w: number; h: number };
+
 /** Tamaño por defecto de un campo nuevo, en puntos PDF. */
 export const DEFAULT_FIELD = { w: 170, h: 55 };
+const MIN_W = 70;
+const MIN_H = 28;
 
 type PageInfo = { width: number; height: number };
+type Drag =
+  | { id: string; mode: "move" | "resize"; startX: number; startY: number; box: FieldBox; page: number }
+  | null;
 
 export function PdfViewer({
   url,
@@ -36,6 +43,7 @@ export function PdfViewer({
   placing = false,
   onPlace,
   onRemove,
+  onUpdate,
   highlightEmail,
 }: {
   url: string;
@@ -43,6 +51,8 @@ export function PdfViewer({
   placing?: boolean;
   onPlace?: (page: number, x: number, y: number) => void;
   onRemove?: (id: string) => void;
+  /** Si se pasa, los campos sin firmar se pueden mover y redimensionar. */
+  onUpdate?: (id: string, box: FieldBox) => void;
   highlightEmail?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,7 +64,16 @@ export function PdfViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Cargar el documento y quedarse con el tamaño de cada página en puntos.
+  // Mientras se arrastra se pinta desde aquí, para que responda al instante
+  // sin esperar al guardado.
+  const [drag, setDrag] = useState<Drag>(null);
+  const [overrides, setOverrides] = useState<Record<string, FieldBox>>({});
+  // Tras arrastrar, el navegador emite un `click` sobre donde se soltó. Si se
+  // soltó fuera del recuadro, ese click cae en la página y crearía un campo
+  // nuevo; para entonces el estado de arrastre ya se limpió, así que hace
+  // falta esta marca para descartarlo.
+  const swallowClick = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -88,7 +107,6 @@ export function PdfViewer({
     };
   }, [url]);
 
-  // Escala: ajustar al ancho disponible, sin pasar de 1.6 para no pixelar.
   const recomputeScale = useCallback(() => {
     const el = containerRef.current;
     if (!el || pages.length === 0) return;
@@ -102,7 +120,6 @@ export function PdfViewer({
     return () => window.removeEventListener("resize", recomputeScale);
   }, [recomputeScale]);
 
-  // Pintar cada página cuando cambie la escala.
   useEffect(() => {
     const pdf = docRef.current;
     if (!pdf || pages.length === 0 || scale <= 0) return;
@@ -140,14 +157,83 @@ export function PdfViewer({
     };
   }, [pages, scale]);
 
-  function handleClick(e: React.MouseEvent<HTMLDivElement>, pageIndex: number) {
-    if (!placing || !onPlace) return;
+  const boxOf = useCallback(
+    (f: SignField): FieldBox =>
+      overrides[f.id] ?? { x: f.x, y: f.y, w: f.w, h: f.h },
+    [overrides]
+  );
+
+  function startDrag(
+    e: React.PointerEvent,
+    field: SignField,
+    mode: "move" | "resize"
+  ) {
+    if (!onUpdate || field.signed) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    setDrag({
+      id: field.id,
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      box: boxOf(field),
+      page: field.page,
+    });
+  }
+
+  function onDragMove(e: React.PointerEvent) {
+    if (!drag) return;
+    const info = pages[drag.page - 1];
+    if (!info) return;
+
+    // CSS → puntos PDF. El eje Y va al revés que en pantalla.
+    const dx = (e.clientX - drag.startX) / scale;
+    const dy = (e.clientY - drag.startY) / scale;
+    const b = drag.box;
+    let next: FieldBox;
+
+    if (drag.mode === "move") {
+      next = { ...b, x: b.x + dx, y: b.y - dy };
+    } else {
+      // El tirador está abajo a la derecha en pantalla: al bajarlo crece el
+      // alto y el borde inferior (la y del PDF) desciende.
+      const w = Math.max(MIN_W, b.w + dx);
+      const h = Math.max(MIN_H, b.h + dy);
+      next = { x: b.x, y: b.y + b.h - h, w, h };
+    }
+
+    // No dejar que el campo se salga de la página.
+    next.w = Math.min(next.w, info.width);
+    next.h = Math.min(next.h, info.height);
+    next.x = Math.max(0, Math.min(next.x, info.width - next.w));
+    next.y = Math.max(0, Math.min(next.y, info.height - next.h));
+
+    setOverrides((o) => ({ ...o, [drag.id]: next }));
+  }
+
+  function endDrag() {
+    if (!drag) return;
+    const box = overrides[drag.id];
+    if (box && onUpdate) onUpdate(drag.id, box);
+    swallowClick.current = true;
+    setDrag(null);
+  }
+
+  function handlePageClick(
+    e: React.MouseEvent<HTMLDivElement>,
+    pageIndex: number
+  ) {
+    if (swallowClick.current) {
+      swallowClick.current = false;
+      return;
+    }
+    if (!placing || !onPlace || drag) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const cssX = e.clientX - rect.left;
     const cssY = e.clientY - rect.top;
     const info = pages[pageIndex];
 
-    // CSS → puntos PDF, centrando el campo en el clic y volteando el eje Y.
     const x = cssX / scale - DEFAULT_FIELD.w / 2;
     const y = info.height - cssY / scale - DEFAULT_FIELD.h / 2;
 
@@ -179,11 +265,11 @@ export function PdfViewer({
         {pages.map((info, i) => (
           <div
             key={i}
-            onClick={(e) => handleClick(e, i)}
-            className={cn(
-              "relative shadow-card",
-              placing && "cursor-crosshair"
-            )}
+            onClick={(e) => handlePageClick(e, i)}
+            onPointerMove={onDragMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            className={cn("relative shadow-card", placing && "cursor-crosshair")}
             style={{ width: info.width * scale, height: info.height * scale }}
           >
             <canvas
@@ -198,12 +284,16 @@ export function PdfViewer({
               // el propio PDF, y el recuadro la taparía.
               .filter((f) => f.page === i + 1 && !f.signed)
               .map((f) => (
-                <FieldBox
+                <Box
                   key={f.id}
                   field={f}
+                  box={boxOf(f)}
                   scale={scale}
                   pageHeight={info.height}
+                  editable={!!onUpdate}
+                  dragging={drag?.id === f.id}
                   onRemove={onRemove}
+                  onStart={startDrag}
                   mine={
                     !!highlightEmail &&
                     f.assigned_email?.toLowerCase() ===
@@ -218,33 +308,49 @@ export function PdfViewer({
   );
 }
 
-function FieldBox({
+function Box({
   field,
+  box,
   scale,
   pageHeight,
+  editable,
+  dragging,
   onRemove,
+  onStart,
   mine,
 }: {
   field: SignField;
+  box: FieldBox;
   scale: number;
   pageHeight: number;
+  editable: boolean;
+  dragging: boolean;
   onRemove?: (id: string) => void;
+  onStart: (
+    e: React.PointerEvent,
+    field: SignField,
+    mode: "move" | "resize"
+  ) => void;
   mine: boolean;
 }) {
   // Puntos PDF (origen abajo) → CSS (origen arriba).
   const style = {
-    left: field.x * scale,
-    top: (pageHeight - field.y - field.h) * scale,
-    width: field.w * scale,
-    height: field.h * scale,
+    left: box.x * scale,
+    top: (pageHeight - box.y - box.h) * scale,
+    width: box.w * scale,
+    height: box.h * scale,
   };
 
   return (
     <div
       style={style}
+      onPointerDown={(e) => editable && onStart(e, field, "move")}
+      onClick={(e) => e.stopPropagation()}
       className={cn(
-        "absolute flex items-center justify-center rounded-sm border-2 border-dashed text-center",
-        mine ? "border-seal bg-seal/10" : "border-line-strong bg-ink/5"
+        "absolute flex touch-none select-none items-center justify-center rounded-sm border-2 border-dashed text-center",
+        mine ? "border-seal bg-seal/10" : "border-line-strong bg-ink/5",
+        editable && (dragging ? "cursor-grabbing" : "cursor-grab"),
+        dragging && "ring-2 ring-seal/40"
       )}
     >
       <span
@@ -256,17 +362,32 @@ function FieldBox({
         {field.assigned_email ?? "Sin asignar"}
       </span>
 
-      {onRemove && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove(field.id);
-          }}
-          aria-label={`Quitar campo de ${field.assigned_email ?? "sin asignar"}`}
-          className="absolute -right-2.5 -top-2.5 rounded-full border border-line bg-surface p-0.5 text-muted shadow-card transition-colors hover:text-danger"
-        >
-          <X className="h-3 w-3" />
-        </button>
+      {editable && (
+        <>
+          {/* Tirador de tamaño, abajo a la derecha. */}
+          <span
+            onPointerDown={(e) => onStart(e, field, "resize")}
+            role="button"
+            aria-label={`Cambiar tamaño del campo de ${field.assigned_email ?? "sin asignar"}`}
+            className={cn(
+              "absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm border-2 bg-surface",
+              mine ? "border-seal" : "border-line-strong"
+            )}
+          />
+          {onRemove && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(field.id);
+              }}
+              aria-label={`Quitar campo de ${field.assigned_email ?? "sin asignar"}`}
+              className="absolute -right-2.5 -top-2.5 rounded-full border border-line bg-surface p-0.5 text-muted shadow-card transition-colors hover:text-danger"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </>
       )}
     </div>
   );
