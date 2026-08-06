@@ -451,7 +451,13 @@ export function DocumentWorkspace({
       </div>
 
       {/* Acta lateral */}
-      <aside className="w-full shrink-0 border-t border-line bg-surface p-5 lg:w-[22rem] lg:border-l lg:border-t-0">
+      {/* Fija arriba al hacer scroll: en un documento de varias páginas, el
+          visor es mucho más alto que esta columna, y sin `sticky` el aside
+          se queda atrás -- desaparece antes de terminar de ver el PDF.
+          `order-first` la sube al inicio en móvil (apilado) para que quede
+          fija desde el primer scroll; en escritorio vuelve a su lugar a la
+          derecha con `lg:order-none`. */}
+      <aside className="sticky top-0 z-30 order-first max-h-dvh w-full shrink-0 self-start overflow-y-auto border-b border-line bg-surface p-5 lg:order-none lg:w-[22rem] lg:border-b-0 lg:border-l lg:border-t-0">
         <div className="flex flex-col gap-7">
           <header className="flex items-center justify-between gap-3">
             <h2 className="text-micro uppercase text-muted">Estado</h2>
