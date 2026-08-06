@@ -98,7 +98,10 @@ export default async function DocumentPage({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3 sm:px-5">
+      {/* Fija arriba: si se va con el scroll, tapa "Volver" y "Compartir" en
+          cuanto el documento tiene varias páginas. z-40 por encima del aside
+          (z-30), que ahora empieza justo debajo de esta barra. */}
+      <header className="sticky top-0 z-40 flex shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <Link
             href="/drive"

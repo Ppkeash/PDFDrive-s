@@ -383,7 +383,7 @@ export function DocumentWorkspace({
         {pending && (
           // Fija: al colocar la firma se navega por el documento, y el botón
           // de confirmar tiene que seguir a mano.
-          <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-3 rounded border border-seal/30 border-l-2 border-l-seal bg-seal-soft px-3 py-2.5 shadow-pop">
+          <div className="sticky top-[76px] z-20 mb-3 flex flex-wrap items-center gap-3 rounded border border-seal/30 border-l-2 border-l-seal bg-seal-soft px-3 py-2.5 shadow-pop">
             <p className="flex-1 text-sm text-seal">
               Arrastra tu firma donde quieras, tira de la esquina para el
               tamaño, o haz clic en otro punto del documento.
@@ -456,8 +456,9 @@ export function DocumentWorkspace({
           se queda atrás -- desaparece antes de terminar de ver el PDF.
           `order-first` la sube al inicio en móvil (apilado) para que quede
           fija desde el primer scroll; en escritorio vuelve a su lugar a la
-          derecha con `lg:order-none`. */}
-      <aside className="sticky top-0 z-30 order-first max-h-dvh w-full shrink-0 self-start overflow-y-auto border-b border-line bg-surface p-5 lg:order-none lg:w-[22rem] lg:border-b-0 lg:border-l lg:border-t-0">
+          derecha con `lg:order-none`. `top-[72px]` la deja justo debajo de
+          la barra superior, que también quedó fija (si no, se tapan). */}
+      <aside className="sticky top-[72px] z-30 order-first max-h-[calc(100dvh-72px)] w-full shrink-0 self-start overflow-y-auto border-b border-line bg-surface p-5 lg:order-none lg:w-[22rem] lg:border-b-0 lg:border-l lg:border-t-0">
         <div className="flex flex-col gap-7">
           <header className="flex items-center justify-between gap-3">
             <h2 className="text-micro uppercase text-muted">Estado</h2>
