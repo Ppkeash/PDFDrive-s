@@ -43,6 +43,27 @@ Commit `c90470b` · desplegado en Vercel + Supabase (edge function
 del documento — si se necesita vencimiento temporal habría que agregarlo
 aparte.
 
+### Documento en tiempo real: campos, firmas e invitados sin F5
+Commit `7035e8d` · desplegado en Vercel + Supabase (migración
+`0007_realtime_document_shares`).
+
+Pedido tras probar con otra persona en otra PC: si alguien firma, coloca
+un campo, entra por el link de invitación, o el dueño cierra el
+documento, las demás pestañas abiertas en ese documento se enteran solas
+— sin recargar. Vía Supabase Realtime (`postgres_changes` sobre
+`signature_fields`, `signatures`, `document_shares` y `documents`,
+filtrado al documento abierto), con un debounce corto de 300ms para
+agrupar varios cambios seguidos en un solo refresh.
+
+De paso, un indicador chico ("Fulano está viendo esto ahora") con
+Presence — efímero, no toca la base de datos, desaparece solo al cerrar
+la pestaña.
+
+**No cubierto:** no hay cursor en vivo ni arrastre en tiempo real de
+campos mientras alguien los mueve (deliberado — acá no hay texto que
+coeditar como en Docs, solo cajas de posición fija; el arrastre en curso
+de otra persona no se ve hasta que suelta y guarda).
+
 ## 2026-08-05
 
 ### Pruebas abiertas: alta solo con Google
