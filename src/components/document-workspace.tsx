@@ -129,6 +129,9 @@ export function DocumentWorkspace({
   // El intent ya se ejecutó con éxito; solo falta que el refresh aterrice
   // para cerrar el aviso con la pantalla ya al día.
   const [closingAfterRefresh, setClosingAfterRefresh] = useState(false);
+  // Quién más tiene este documento abierto ahora mismo (Presence, no BD).
+  const [viewers, setViewers] = useState<string[]>([]);
+  const realtimeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // El campo fantasma vive hasta que el servidor devuelve la lista nueva: en
   // ese momento `fields` cambia de identidad y el recuadro real ocupa su sitio.
@@ -183,6 +186,84 @@ export function DocumentWorkspace({
   function refresh() {
     startRefresh(() => router.refresh());
   }
+
+  /**
+   * Tiempo real: si alguien más firma, coloca un campo, se une por el link
+   * o el documento se cierra, esta pestaña se entera sola -- sin F5. Los
+   * cambios de la propia pestaña también disparan un evento (Postgres no
+   * distingue quién escribió), pero un refresh de más no rompe nada; se
+   * agrupan con un debounce corto para no repetir refresh por cada fila.
+   */
+  useEffect(() => {
+    const channel = supabase.channel(`doc:${documentId}`, {
+      config: { presence: { key: userEmail || crypto.randomUUID() } },
+    });
+
+    function scheduleRefresh() {
+      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+      realtimeTimer.current = setTimeout(refresh, 300);
+    }
+
+    channel
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "signature_fields",
+          filter: `document_id=eq.${documentId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "signatures",
+          filter: `document_id=eq.${documentId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "document_shares",
+          filter: `document_id=eq.${documentId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "documents",
+          filter: `id=eq.${documentId}`,
+        },
+        scheduleRefresh
+      )
+      .on("presence", { event: "sync" }, () => {
+        const emails = Object.values(channel.presenceState())
+          .flat()
+          .map((p) => (p as { email?: string }).email)
+          .filter((e): e is string => !!e && e !== userEmail);
+        setViewers([...new Set(emails)]);
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED" && userEmail) {
+          channel.track({ email: userEmail });
+        }
+      });
+
+    return () => {
+      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, userEmail]);
 
   async function addField(page: number, x: number, y: number) {
     setError(null);
@@ -479,6 +560,19 @@ export function DocumentWorkspace({
             <h2 className="text-micro uppercase text-muted">Estado</h2>
             <StatusChip status={status} />
           </header>
+
+          {/* Quién más está mirando esto ahora mismo (Presence, no BD:
+              desaparece solo al cerrar la pestaña). */}
+          {viewers.length > 0 && (
+            <p className="-mt-4 flex items-center gap-1.5 text-xs text-muted">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
+              <span className="truncate">
+                {viewers.length === 1
+                  ? `${viewers[0]} está viendo esto ahora`
+                  : `${viewers.length} personas viendo esto ahora`}
+              </span>
+            </p>
+          )}
 
           {/* Progreso: lo primero que hay que saber. */}
           {!sealed && (
