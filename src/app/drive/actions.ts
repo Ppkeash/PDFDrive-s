@@ -196,3 +196,39 @@ export async function removeShare(documentId: string, email: string) {
   revalidatePath(`/doc/${documentId}`);
   return { removedFields: orphans.length };
 }
+
+/**
+ * Genera (o renueva) el link único de invitación: quien lo abre queda como
+ * firmante, sin tener que invitar por correo uno por uno. Renovarlo invalida
+ * el anterior -- es la forma de revocarlo sin tener que "desactivar" nada.
+ */
+export async function generateInviteLink(documentId: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado" };
+
+  const token = crypto.randomUUID().replace(/-/g, "");
+  const { error } = await supabase
+    .from("documents")
+    .update({ invite_token: token })
+    .eq("id", documentId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/doc/${documentId}`);
+  return { token };
+}
+
+/** Quita el link: quien ya entró por ahí conserva su acceso, pero el enlace deja de servir. */
+export async function revokeInviteLink(documentId: string) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("documents")
+    .update({ invite_token: null })
+    .eq("id", documentId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/doc/${documentId}`);
+  return {};
+}

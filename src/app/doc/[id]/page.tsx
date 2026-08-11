@@ -17,7 +17,7 @@ export default async function DocumentPage({
   const { data: doc } = await supabase
     .from("documents")
     .select(
-      "id, name, mime, status, owner_id, storage_path, signed_path, current_hash"
+      "id, name, mime, status, owner_id, storage_path, signed_path, current_hash, invite_token"
     )
     .eq("id", params.id)
     .maybeSingle();
@@ -142,6 +142,7 @@ export default async function DocumentPage({
               documentId={doc.id}
               shares={shares}
               ownerEmail={ownerProfile?.email ?? user?.email ?? ""}
+              inviteToken={doc.invite_token}
             />
           )}
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Guilloche } from "@/components/guilloche";
 import { Spinner } from "@/components/spinner";
@@ -30,13 +30,31 @@ function explain(raw: string, status?: number): string {
   return raw;
 }
 
+// `useSearchParams` obliga a un límite de Suspense: si no, Next intenta
+// prerenderizar la página como estática y falla el build.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Al entrar desde un link de invitación, hay que volver ahí después de
+  // autenticarse -- si no, la persona cae en /drive y pierde el enlace.
+  const next = (() => {
+    const n = searchParams.get("next");
+    return n && n.startsWith("/") ? n : "/drive";
+  })();
 
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +71,7 @@ export default function LoginPage() {
       return setError(explain(error.message, error.status));
     }
 
-    router.push("/drive");
+    router.push(next);
     router.refresh();
   }
 
@@ -61,7 +79,9 @@ export default function LoginPage() {
     setError(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
+      options: {
+        redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      },
     });
     if (error) setError(explain(error.message, error.status));
   }
