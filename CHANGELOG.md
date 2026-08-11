@@ -64,6 +64,29 @@ campos mientras alguien los mueve (deliberado — acá no hay texto que
 coeditar como en Docs, solo cajas de posición fija; el arrastre en curso
 de otra persona no se ve hasta que suelta y guarda).
 
+### Deshacer de otro se ve en vivo, y el error deja de ser genérico
+Commit `53e3f3a` · desplegado en Vercel + Supabase (migración
+`0008_realtime_delete_replica_identity`).
+
+Reportado en prueba real: el dueño deshizo la firma de alguien que había
+entrado por el link; a esa persona no se le refrescaba la pantalla, y al
+intentar deshacer su propia firma (ya deshecha por el dueño) le saltaba
+"Edge Function returned a non-2xx status code".
+
+Dos causas, una encima de la otra:
+
+- **Realtime no mandaba el DELETE.** Con RLS activo, Postgres necesita la
+  fila completa del borrado para poder confirmar si el suscriptor tenía
+  permiso de verla — por default solo manda el id (`REPLICA IDENTITY
+  DEFAULT`), así que Realtime descartaba el evento en silencio. Por eso
+  INSERT (firmar, colocar campo) sí se veía en vivo, pero "deshacer
+  firma", "quitar campo" y "quitar acceso" no. Se activó `REPLICA
+  IDENTITY FULL` en `signatures`, `signature_fields` y `document_shares`.
+- **El error mostrado era el genérico del SDK.** Cuando la edge function
+  responde con un status distinto de 2xx, `supabase-js` no lee el cuerpo
+  — el mensaje real ("ya se había deshecho esa firma") vive en
+  `error.context`, no en `error.message`. Ahora se lee de ahí.
+
 ## 2026-08-05
 
 ### Pruebas abiertas: alta solo con Google
