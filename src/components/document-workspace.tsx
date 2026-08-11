@@ -120,7 +120,15 @@ export function DocumentWorkspace({
   const [verifying, setVerifying] = useState(false);
   // Acción irreversible a la espera de confirmación.
   const [intent, setIntent] = useState<Intent | null>(null);
-  const [, startRefresh] = useTransition();
+  // `refreshing` sigue en true hasta que el RSC trae los datos nuevos: sin
+  // esto el diálogo se cerraba y el spinner se apagaba antes de que la
+  // pantalla reflejara el cambio, y parecía que no había pasado nada (el
+  // caso típico era "deshacer": el cuadro de firma tardaba en reaparecer y
+  // tocaba andar haciendo clic para que "reaccionara").
+  const [refreshing, startRefresh] = useTransition();
+  // El intent ya se ejecutó con éxito; solo falta que el refresh aterrice
+  // para cerrar el aviso con la pantalla ya al día.
+  const [closingAfterRefresh, setClosingAfterRefresh] = useState(false);
 
   // El campo fantasma vive hasta que el servidor devuelve la lista nueva: en
   // ese momento `fields` cambia de identidad y el recuadro real ocupa su sitio.
@@ -290,12 +298,19 @@ export function DocumentWorkspace({
     return true;
   }
 
-  /** Ejecuta la acción confirmada y cierra el aviso si salió bien. */
+  /** Ejecuta la acción confirmada; el aviso se cierra solo cuando el refresh aterriza. */
   async function runIntent() {
     if (!intent) return;
     const ok = await intent.run();
-    if (ok !== false) setIntent(null);
+    if (ok !== false) setClosingAfterRefresh(true);
   }
+
+  useEffect(() => {
+    if (closingAfterRefresh && !refreshing) {
+      setIntent(null);
+      setClosingAfterRefresh(false);
+    }
+  }, [closingAfterRefresh, refreshing]);
 
   /**
    * Al terminar de trazar: si el dueño ya reservó un sitio para esta persona,
@@ -761,7 +776,7 @@ export function DocumentWorkspace({
 
       <ConfirmDialog
         open={!!intent}
-        busy={busy}
+        busy={busy || refreshing}
         title={
           intent?.kind === "seal"
             ? "Vas a cerrar el documento"
