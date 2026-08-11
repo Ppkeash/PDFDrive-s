@@ -43,6 +43,31 @@ const PdfViewer = dynamic(
   }
 );
 
+/**
+ * El SDK de Supabase no lee el cuerpo de la respuesta cuando la edge
+ * function devuelve un status distinto de 2xx: `data` llega vacío y
+ * `error.message` es el genérico "Edge Function returned a non-2xx status
+ * code", que no dice nada útil (p. ej. "ya se había deshecho esa firma").
+ * El mensaje real vive en `error.context`, la respuesta cruda.
+ */
+async function edgeErrorMessage(
+  error: unknown,
+  data: { error?: string } | null | undefined,
+  fallback: string
+): Promise<string> {
+  if (data?.error) return data.error;
+  const ctx = (error as { context?: Response } | null)?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try {
+      const body = await ctx.clone().json();
+      if (body?.error) return body.error;
+    } catch {
+      // Cuerpo no era JSON: se cae al mensaje genérico de abajo.
+    }
+  }
+  return (error as { message?: string } | null)?.message ?? fallback;
+}
+
 type Signer = {
   signer_id: string | null;
   field_id: string | null;
@@ -329,7 +354,7 @@ export function DocumentWorkspace({
     setBusy(false);
 
     if (error || data?.error) {
-      setError(data?.error ?? error?.message ?? "No se pudo firmar.");
+      setError(await edgeErrorMessage(error, data, "No se pudo firmar."));
       return false;
     }
     setPadOpen(false);
@@ -353,7 +378,13 @@ export function DocumentWorkspace({
     setBusy(false);
 
     if (error || data?.error) {
-      setError(data?.error ?? error?.message ?? "No se pudo deshacer la firma.");
+      // Puede haber llegado tarde: la refrescó otro (dueño/editor) por
+      // realtime y ya no había nada que deshacer -- no es un error real
+      // del lado del usuario, solo que se adelantaron.
+      setError(
+        await edgeErrorMessage(error, data, "No se pudo deshacer la firma.")
+      );
+      refresh();
       return false;
     }
     setVerify(null);
@@ -371,7 +402,7 @@ export function DocumentWorkspace({
     setBusy(false);
 
     if (error || data?.error) {
-      setError(data?.error ?? error?.message ?? "No se pudo cerrar.");
+      setError(await edgeErrorMessage(error, data, "No se pudo cerrar."));
       return false;
     }
     setVerify(null);
