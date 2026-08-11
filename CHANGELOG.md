@@ -8,6 +8,41 @@ Cada entrada de código indica su commit y si ya está desplegada. Un cambio
 de Supabase Dashboard no tiene commit — se anota igual porque afecta el
 comportamiento en producción y en el repo no queda rastro.
 
+## 2026-08-11
+
+### Deshacer y firmar ya no necesitan clics de más
+Commit `7408a7c` · desplegado en Vercel.
+
+Reportado por una prueba real: al deshacer una firma, la persona tenía
+que hacer clic en la X del recuadro y luego en otro punto de la pantalla
+para que "se notara" el cambio. Causa: el aviso de confirmación se cerraba
+apenas volvía la llamada al servidor, pero `router.refresh()` (que trae
+los datos nuevos) seguía en vuelo aparte — quedaba un hueco donde la
+pantalla no había cambiado todavía. Ahora el aviso se queda abierto (con
+spinner) hasta que el refresh aterriza de verdad. Afecta deshacer, firmar
+y cerrar documento por igual — los tres pasan por el mismo diálogo.
+
+### Gestionar separado de Compartir, y link único de invitación
+Commit `c90470b` · desplegado en Vercel + Supabase (edge function
+`accept-invite`, migración `0006_link_invitacion`).
+
+- **Gestionar ≠ Compartir:** ambos botones abrían el mismo diálogo con el
+  mismo contenido. Ahora Compartir solo invita (por correo o por link);
+  Gestionar solo administra (lista de accesos, cambiar rol, quitar acceso).
+- **Link único de invitación:** invitar de a uno era tedioso con varios
+  firmantes. El dueño genera un link desde "Compartir" y lo manda una sola
+  vez por el canal que sea (WhatsApp, correo...). Quien lo abre entra
+  siempre como **firmante** — sin registro. Es reutilizable (sirve para
+  todos los que entren por ahí) y deja de funcionar solo cuando el
+  documento se cierra (`status = 'firmado'`), o antes si el dueño lo
+  revoca a mano ("Desactivar" / "Generar uno nuevo").
+- El login ahora respeta `?next=` para volver al link después de
+  autenticarse con Google, en vez de mandar siempre a `/drive`.
+
+**Pendiente / no cubierto:** no hay expiración por fecha, solo por cierre
+del documento — si se necesita vencimiento temporal habría que agregarlo
+aparte.
+
 ## 2026-08-05
 
 ### Pruebas abiertas: alta solo con Google
