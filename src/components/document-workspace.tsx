@@ -942,9 +942,13 @@ export function DocumentWorkspace({
                   de <strong>{intent.fieldLabel}</strong>
                 </>
               ) : null}{" "}
-              del documento y el campo vuelve a quedar pendiente.
+              del documento, y el campo se elimina con ella -- no queda un
+              recuadro esperando.
             </p>
-            <p>Se puede volver a firmar cuando quieras.</p>
+            <p>
+              Si hace falta volver a firmar ahí, hay que colocar un campo
+              nuevo.
+            </p>
           </>
         ) : (
           <>

@@ -177,6 +177,18 @@ Deno.serve(async (req) => {
       if (delErr)
         return json({ error: `No se pudo deshacer: ${delErr.message}` }, 500);
 
+      // El recuadro no se queda ahí esperando: deshacer borra la firma Y el
+      // campo. Volver a firmar en ese sitio es un acto aparte -- alguien
+      // tiene que colocar un campo nuevo, no queda reservado solo.
+      if (target.field_id) {
+        const { error: fieldDelErr } = await admin
+          .from("signature_fields")
+          .delete()
+          .eq("id", target.field_id);
+        if (fieldDelErr)
+          console.error("signature_fields.delete tras deshacer:", fieldDelErr);
+      }
+
       const stillSigned = (existing ?? []).filter((s) => s.id !== target.id);
 
       const { data: origFile, error: origErr } = await admin.storage
