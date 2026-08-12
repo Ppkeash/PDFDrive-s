@@ -102,6 +102,26 @@ un campo nuevo.
 Aviso de confirmación actualizado ("el campo se elimina con ella" en vez
 de "vuelve a quedar pendiente").
 
+### Firmar no mostraba la rúbrica hasta recargar a mano
+Commit `1933f2b` · desplegado en Vercel.
+
+Reportado justo después del cambio anterior: "le doy en firmar y no
+aparece la firma, es como si se desapareciera instantáneamente". Causa
+real, y no era el cambio anterior: el PDF firmado se sube siempre a la
+misma ruta (`{owner}/{docId}.pdf` — cada firma nueva se sube encima), y
+el visor solo recargaba el archivo cuando la ruta cambiaba. Eso
+detectaba al primer firmante (pasa de `originals` a `signed`, ruta
+distinta) pero no a los siguientes — el campo se marcaba firmado y su
+recuadro desaparecía, pero la rúbrica estampada nunca se veía sin F5.
+Con varias personas firmando (justo lo que habilita el link de
+invitación) esto se nota mucho más que antes.
+
+Se agrega `documents.current_hash` a la clave de recarga del visor: solo
+cambia cuando el contenido del PDF cambia de verdad, así que ahora sirve
+para decidir cuándo recargar sin depender de la ruta ni disparar
+recargas de más por otros refrescos (alguien entrando, un campo nuevo de
+otra persona).
+
 ## 2026-08-05
 
 ### Pruebas abiertas: alta solo con Google
