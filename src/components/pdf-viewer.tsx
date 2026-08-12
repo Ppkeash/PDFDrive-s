@@ -56,6 +56,7 @@ type Drag =
 
 export function PdfViewer({
   url,
+  version = null,
   fields,
   placing = false,
   onPlace,
@@ -68,6 +69,15 @@ export function PdfViewer({
   ghost = null,
 }: {
   url: string;
+  /**
+   * Hash del PDF actual (`documents.current_hash`). La ruta del archivo
+   * firmado es siempre la misma -- cada firma nueva se sube encima -- así
+   * que sin esto no había forma de distinguir "cambió el contenido" de "se
+   * refrescó la página por otro motivo" (alguien más entró, se agregó un
+   * campo). El resultado: firmar un campo ya reservado no mostraba la
+   * rúbrica hasta recargar a mano.
+   */
+  version?: string | null;
   fields: SignField[];
   placing?: boolean;
   onPlace?: (page: number, x: number, y: number) => void;
@@ -116,15 +126,18 @@ export function PdfViewer({
 
   // El enlace firmado lleva un token distinto cada vez que el servidor
   // reenvía la página, así que `url` cambia en cada refresco aunque el archivo
-  // sea el mismo. Recargar el PDF por eso hacía parpadear el visor cada vez que
-  // se colocaba un campo. Lo que identifica al archivo es su ruta.
+  // sea el mismo -- eso ya no basta para decidir si hay que recargar. La ruta
+  // del PDF firmado tampoco alcanza: es siempre la misma, cada firma nueva se
+  // sube encima. Lo único que de verdad cambia cuando el contenido cambia es
+  // el hash (`version`); sin él en la clave, firmar un campo ya reservado no
+  // mostraba la rúbrica hasta recargar a mano.
   const urlKey = useMemo(() => {
     try {
-      return new URL(url).pathname;
+      return `${new URL(url).pathname}::${version ?? ""}`;
     } catch {
-      return url;
+      return `${url}::${version ?? ""}`;
     }
-  }, [url]);
+  }, [url, version]);
   const urlRef = useRef(url);
   urlRef.current = url;
 

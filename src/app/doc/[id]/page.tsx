@@ -152,6 +152,7 @@ export default async function DocumentPage({
         <DocumentWorkspace
           documentId={doc.id}
           url={signedUrl?.signedUrl ?? null}
+          documentHash={doc.current_hash}
           isOwner={isOwner}
           role={role}
           status={doc.status as DocStatus}

@@ -105,6 +105,7 @@ type VerifyResult = {
 export function DocumentWorkspace({
   documentId,
   url,
+  documentHash,
   isOwner,
   role,
   status,
@@ -117,6 +118,8 @@ export function DocumentWorkspace({
 }: {
   documentId: string;
   url: string | null;
+  /** Hash del PDF actual: distingue "cambió el contenido" de "se refrescó por otra cosa". */
+  documentHash: string | null;
   isOwner: boolean;
   /** Permiso de quien está mirando: decide qué puede hacer, no solo qué ve. */
   role: ShareRole;
@@ -555,6 +558,7 @@ export function DocumentWorkspace({
         {url ? (
           <PdfViewer
             url={url}
+            version={documentHash}
             fields={fields}
             placing={placing && canEditFields && !pending && !ghost}
             onPlace={addField}
