@@ -87,6 +87,21 @@ Dos causas, una encima de la otra:
   — el mensaje real ("ya se había deshecho esa firma") vive en
   `error.context`, no en `error.message`. Ahora se lee de ahí.
 
+## 2026-08-12
+
+### Deshacer firma borra el campo, no lo deja reservado
+Commit `b714b3f` · desplegado en Vercel + Supabase (`sign-pdf` v8).
+
+Antes, al deshacer una firma, el campo se quedaba ahí (solo se le
+quitaba la firma) y volvía a aparecer como recuadro pendiente en el
+mismo sitio, listo para volver a firmar. Pedido explícito: eso ya no
+debe pasar — deshacer borra la firma **y** el campo entero. Si hace
+falta volver a firmar en ese lugar, es un acto aparte: alguien coloca
+un campo nuevo.
+
+Aviso de confirmación actualizado ("el campo se elimina con ella" en vez
+de "vuelve a quedar pendiente").
+
 ## 2026-08-05
 
 ### Pruebas abiertas: alta solo con Google
