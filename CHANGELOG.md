@@ -8,6 +8,39 @@ Cada entrada de código indica su commit y si ya está desplegada. Un cambio
 de Supabase Dashboard no tiene commit — se anota igual porque afecta el
 comportamiento en producción y en el repo no queda rastro.
 
+## 2026-09-23
+
+### La aplicación deja de ser encontrable desde fuera de la empresa
+Sin desplegar todavía — requiere cargar variables de entorno en Vercel.
+
+El objetivo: que alguien de la empresa a quien le interesó la herramienta no
+pueda dar con ella desde fuera. Tres capas, todas por código y sin costo:
+
+- **Nada de buscadores.** `robots.txt` niega todo y la cabecera
+  `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex` va en
+  todas las respuestas. La cabecera manda sobre robots.txt: aunque alguien
+  pegue un enlace en cualquier parte, no se indexa.
+- **Solo entra la oficina.** `ACCESS_ALLOWED_IPS` acepta IP exacta (v4/v6) y
+  rango CIDR v4. Quien no está en la lista recibe **404, nunca 403** — un 403
+  confirmaría que aquí hay algo.
+- **Frase para quien trabaja fuera.** Abrir cualquier URL una vez con
+  `?acceso=<frase>` deja una cookie firmada (HMAC, con caducidad dentro de la
+  firma) y el parámetro se quita de la URL en la redirección, para que no
+  quede en el historial ni en un enlace reenviado. No hay página de acceso
+  visible: una página de login extra sería justamente la pista que se
+  intenta no dar.
+
+Con `ACCESS_GATE_ENABLED` distinto de `"true"` la puerta queda abierta, que es
+lo que conviene en local. `robots.txt` se sirve siempre.
+
+**Lo que esto no hace:** tapa el frontend, no la API de Supabase. La anon key
+viaja en el bundle del navegador y `*.supabase.co` sigue siendo público por
+diseño. Lo que protege los datos es RLS, y eso se audita aparte (Fase B).
+Esta puerta es cortina, no cerradura.
+
+De paso: las rutas exentas ahora se resuelven antes que `updateSession`, que
+si no mandaba `robots.txt` a `/login`.
+
 ## 2026-08-11
 
 ### Deshacer y firmar ya no necesitan clics de más
