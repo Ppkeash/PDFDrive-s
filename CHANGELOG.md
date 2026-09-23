@@ -10,6 +10,50 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+### Auditoría de RLS: el directorio de correos estaba abierto
+Migraciones `0010_endurecer_rls.sql` y `0011_revocar_execute_public.sql`,
+aplicadas a producción y verificadas contra la API.
+
+La puerta de la Fase A tapa el frontend, no la API de Supabase, que es
+pública por diseño: la anon key viaja en el bundle del navegador. Se auditó
+qué se podía sacar hablándole al REST directamente. Todo comprobado contra
+producción, no deducido del SQL.
+
+Bien de entrada: las 8 tablas con RLS activo, buckets privados salvo
+`avatars`, y `documents`, `signatures`, `audit_log`, `comments`, `folders` y
+`document_shares` vacíos sin sesión.
+
+Corregido:
+
+- **El directorio de usuarios era público.** `0001_init.sql` dejó la lectura
+  de `profiles` con `using (true)` para "mostrar nombres"; en la práctica
+  cualquiera con la anon key se bajaba la tabla entera de correos sin
+  iniciar sesión. Ahora un perfil lo ve su dueño y quien comparta algún
+  documento con él — la lista de firmantes sigue saliendo completa.
+- **`anon` tenía permisos sobre todas las tablas**, por los grants que
+  Supabase concede por defecto. Aquí no hay nada anónimo: toda ruta exige
+  sesión y `/verify` es texto estático.
+- **Un editor podía borrar un campo ya firmado.** La firma sobrevivía (la FK
+  es SET NULL) pero quedaba huérfana, sin el recuadro que la ataba a una
+  página y a una persona. El firmante ya tenía esa guarda desde `0005`; al
+  editor le faltaba.
+- `current_email()` sin `search_path` fijo.
+
+`0011` remata lo que `0010` no cerró: revocar `EXECUTE` "from anon" no hacía
+nada, porque Postgres se lo concede a `PUBLIC` al crear la función y `anon`
+lo heredaba por ahí. Las funciones de apoyo seguían respondiendo a
+`/rest/v1/rpc/` sin sesión hasta que se revocó de `PUBLIC`.
+
+Comprobado después: sin sesión, `profiles` y `documents` responden 401 y las
+funciones 404. Con sesión, un usuario con 6 documentos propios y 2
+compartidos sigue viendo los 8; uno sin nada ve cero documentos y un solo
+perfil, el suyo.
+
+Quedan tres avisos del linter de Supabase que son de configuración del
+Dashboard, no de esquema. Están anotados en el informe de auditoría, que no
+se versiona: describe cosas de un sistema en marcha y este repositorio es
+público.
+
 ### La aplicación deja de ser encontrable desde fuera de la empresa
 Sin desplegar todavía — requiere cargar variables de entorno en Vercel.
 

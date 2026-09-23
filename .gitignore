@@ -17,3 +17,7 @@ supabase/functions/.env
 
 .vercel
 .env*
+
+# Informes de auditoria de seguridad: describen huecos de un sistema vivo y
+# este repositorio es publico. Se quedan en local.
+docs/AUDITORIA_*.md
