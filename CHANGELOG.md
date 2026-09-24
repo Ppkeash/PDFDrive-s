@@ -10,6 +10,47 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+### Los límites del plan dejan de ser decorativos
+Migración `0016_limites_de_plan.sql` aplicada, más la pantalla `/planes` y un
+aviso en el Drive. **El cobro arranca apagado.**
+
+`evaluateDocumentEntitlement` llevaba desde la `0009` escrita y sin usar: la
+prueba vencía, salía el correo, y se podía seguir firmando igual.
+
+**Lo que se cuenta es cerrar un documento**, no subirlo ni firmarlo suelto: es
+el momento en que el trámite queda hecho, y es lo que un cliente reconoce como
+"un documento". Los firmantes externos nunca consumen cupo.
+
+- `cupo_de_documentos()` decide en la base; la de TypeScript pinta la
+  pantalla. Existen las dos a propósito: desde el cliente no se puede saltar
+  la primera.
+- El cobro va en un trigger **BEFORE**: en un AFTER el documento ya quedaría
+  firmado y sería tarde para impedirlo.
+- Una suscripción viva manda sobre el plan del workspace, así que la prueba
+  concede el plan de pago sin tocar nada y al vencer cae sola al gratuito.
+- Si el cupo incluido se agotó, el documento sale de un paquete comprado, y se
+  gasta el que venza antes — si no, caduca sin usarse.
+- Tarea diaria que cierra las pruebas vencidas. Sin ella se quedarían en
+  `trialing` para siempre y cualquier informe futuro contaría mal.
+
+`billing_enforcement_enabled` arranca en `false`. Encender un límite sobre
+gente que ya está trabajando, sin avisar, es la forma más rápida de que
+abandonen: primero tiene que verse en pantalla.
+
+Por eso van con esto `/planes` (consumo, planes y paquete de documentos) y un
+aviso en el Drive que **solo aparece cuando hay algo que decir** — quedan 3 o
+menos documentos, la prueba termina en 5 días o menos, o ya no queda cupo. Con
+la prueba recién empezada no dice nada, porque estorbaría.
+
+Comprobado contra producción: 20 documentos cerrados agotan el plan personal;
+el 21 pasa con el interruptor apagado y queda contado; con el interruptor
+encendido el siguiente se bloquea con un mensaje entendible; al comprar
+créditos vuelve a dejar y gasta exactamente uno; al vencer la prueba el plan
+cae a `free`.
+
+**El pago sigue sin conectar.** `/planes` lo dice en vez de fingir un botón
+que no cobra.
+
 ### Los correos ya salen solos
 Migración `0015_tareas_programadas_correo.sql` aplicada, edge function
 `send-emails` desplegada y proveedor configurado. **Probado de punta a punta

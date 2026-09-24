@@ -5,6 +5,7 @@ import { NewFolderButton } from "@/components/new-folder-button";
 import { DocumentRow } from "@/components/document-row";
 import { FolderCard } from "@/components/folder-card";
 import { ChevronRight } from "lucide-react";
+import { PlanBanner, type Cupo } from "@/components/plan-banner";
 import type { DocStatus } from "@/types";
 
 export default async function DrivePage({
@@ -54,6 +55,12 @@ export default async function DrivePage({
   }
 
   const folderOptions = folders.map((f) => ({ id: f.id, name: f.name }));
+
+  // El cupo lo resuelve la base a partir de la sesión: el cliente no puede
+  // preguntar por el espacio de otro. Si falla, el Drive se muestra igual --
+  // un aviso de plan no vale romper la pantalla principal.
+  const { data: cupoRaw } = await supabase.rpc("mi_cupo_de_documentos");
+  const cupo = (cupoRaw as Cupo | null) ?? null;
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
@@ -111,6 +118,8 @@ export default async function DrivePage({
           <UploadButton folderId={activeId} />
         </div>
       </header>
+
+      <PlanBanner cupo={cupo} />
 
       {children.length > 0 && (
         <ul className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-3">
