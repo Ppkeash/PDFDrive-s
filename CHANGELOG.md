@@ -10,6 +10,30 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+### Los correos ya salen solos
+Migración `0015_tareas_programadas_correo.sql` aplicada, edge function
+`send-emails` desplegada y proveedor configurado. **Probado de punta a punta
+contra producción: el correo llegó.**
+
+- Proveedor SMTP con una cuenta de Gmail propia, que es lo que se puede hacer
+  sin dominio verificado. `EMAIL_PROVIDER` deja pasar a Resend el día que
+  haya dominio, sin tocar código.
+- `pg_cron` vacía la cola cada 2 minutos y encola los avisos de prueba una vez
+  al día a las 9 de la mañana en Colombia. Un "te quedan 3 días" no gana nada
+  por llegar de madrugada.
+- La tarea llama a la función con un secreto guardado en **Vault**, cifrado.
+  En `app_settings` estaría en claro, y es la única llave del envío.
+
+Un tropiezo por el camino, anotado para que no se repita: la función
+comprobaba la autorización contra `SUPABASE_SERVICE_ROLE_KEY`, pero Supabase
+inyecta esa clave en el formato nuevo (`sb_secret_...`) mientras que la que
+reparte el panel es el JWT antiguo. Comparar una con otra devolvía 401 sin
+explicar por qué. Ahora usa un secreto propio, que además no depende de qué
+formato de claves use Supabase mañana.
+
+Las credenciales no se versionan: `.env.example` lista qué variables hacen
+falta, nunca su valor.
+
 ### Fase C: la aplicación por fin manda correos
 Migración `0014_bandeja_de_correo.sql` aplicada y edge function
 `send-emails` escrita. **Falta configurar el proveedor para que salgan.**

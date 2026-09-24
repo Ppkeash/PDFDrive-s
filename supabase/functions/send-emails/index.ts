@@ -124,15 +124,24 @@ async function enviarPorResend(p: Pendiente, from: string): Promise<void> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  // Solo la llama una tarea programada, con la service role key. No hay
-  // camino desde el navegador.
+  // Solo la llama la tarea programada. La función corre con verify_jwt en
+  // false (no hay usuario detrás), así que este secreto es la única puerta.
+  //
+  // Se usa un secreto propio y no la service role key: Supabase inyecta esa
+  // clave en el formato nuevo (`sb_secret_...`) mientras que la que reparte
+  // el panel es el JWT antiguo, así que compararlas se cae sin decir por qué.
+  const esperado = Deno.env.get("SEND_EMAILS_SECRET");
+  if (!esperado) return json({ error: "Falta SEND_EMAILS_SECRET" }, 500);
+
   const auth = req.headers.get("Authorization") ?? "";
-  const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  if (auth !== `Bearer ${service}`) {
+  if (auth !== `Bearer ${esperado}`) {
     return json({ error: "No autorizado" }, 401);
   }
 
-  const admin = createClient(Deno.env.get("SUPABASE_URL")!, service);
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
 
   const proveedor = (Deno.env.get("EMAIL_PROVIDER") ?? "smtp").toLowerCase();
   const from = Deno.env.get("EMAIL_FROM");
