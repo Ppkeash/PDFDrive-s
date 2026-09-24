@@ -10,6 +10,40 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+### Plan B del registro: códigos de invitación
+Migración `0013_codigos_de_invitacion.sql` aplicada, más la pantalla
+`/registro`. Probado contra producción con transacciones que revierten.
+
+La `0012` resuelve el caso bueno: si la empresa tiene dominio propio basta
+una fila (`'domain'`, `'laempresa.com'`) y cualquiera de dentro se registra
+solo. Pero todavía no está confirmado que lo tengan. Si su gente usa correos
+personales no hay dominio que filtre, y mantener a mano la lista de correos
+es trabajo que nadie va a hacer.
+
+Con un código, quien administra reparte una cadena por donde sea y cada quien
+se registra solo. Nadie necesita conocer los correos de nadie.
+
+**El orden va al revés de lo esperable, y es a propósito:** con Google no hay
+dónde escribir un código durante el login, y cuando vuelve el OAuth la cuenta
+ya está creada — demasiado tarde para el trigger. Así que primero se canjea el
+código declarando el correo, que queda habilitado en `signup_allowlist`, y
+solo entonces se entra con Google. Si alguien declara un correo y luego entra
+con otra cuenta de Google, rebota.
+
+- Los códigos tienen usos máximos, vencimiento y revocación.
+- Reintentar con un correo ya habilitado no gasta otro uso.
+- Código inválido, vencido, agotado y correo mal escrito devuelven **la misma
+  respuesta**: quien esté probando códigos no obtiene ninguna pista.
+- Los intentos quedan registrados y hay freno por IP (20 en 10 minutos). Es el
+  único uso sensato de la IP en todo esto: detectar una ráfaga, nunca decidir
+  quién pasa.
+- `redeem_signup_code` es la única función que `anon` puede ejecutar, porque
+  la llama gente que todavía no tiene cuenta. El secreto es el código.
+
+`/registro` queda como ruta pública y el login enlaza a ella. De paso se
+traduce el error que devuelve GoTrue cuando el trigger aborta la creación
+("database error saving new user"), que sin traducir no le dice nada a nadie.
+
 ### Registro restringido y prueba gratuita de 14 días
 Migración `0012_registro_restringido_y_prueba.sql` — **escrita, sin aplicar**,
 igual que la `0009` en la que se apoya.

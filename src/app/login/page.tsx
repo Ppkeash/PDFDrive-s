@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Guilloche } from "@/components/guilloche";
@@ -17,10 +18,13 @@ function explain(raw: string, status?: number): string {
     return "Demasiados intentos seguidos. Espera un minuto y vuelve a probar.";
   if (m.includes("invalid login credentials"))
     return "Email o contraseña incorrectos.";
-  // El registro está cerrado: entrar con una cuenta de Google desconocida
-  // intenta crear usuario y el servidor lo rechaza.
+  // El registro está restringido (ver migración 0012): entrar con una cuenta
+  // desconocida intenta crear usuario y el trigger lo aborta. GoTrue lo
+  // devuelve como error genérico de base de datos.
   if (m.includes("signups not allowed") || m.includes("signup_disabled"))
-    return "Esa cuenta no tiene acceso. Pídele al administrador que te la cree.";
+    return "Esa cuenta no tiene acceso. Pídele al administrador que te la habilite.";
+  if (m.includes("database error") && m.includes("new user"))
+    return "Esa cuenta no está habilitada. Si tienes un código de invitación, usa “Crear cuenta”.";
   if (m.includes("email logins are disabled"))
     return "El acceso con contraseña está desactivado ahora mismo.";
   if (m.includes("provider is not enabled") || m.includes("unsupported provider"))
@@ -179,8 +183,14 @@ function LoginForm() {
             </p>
           )}
           <p className="mt-8 border-t border-line pt-5 text-sm text-muted">
-            El acceso es por invitación: las cuentas las crea quien administra
-            el drive.
+            ¿No tienes cuenta?{" "}
+            <Link
+              href="/registro"
+              className="font-medium text-seal underline decoration-seal/30 underline-offset-4 hover:decoration-seal"
+            >
+              Crear cuenta
+            </Link>{" "}
+            con el código de tu equipo.
           </p>
         </div>
       </section>

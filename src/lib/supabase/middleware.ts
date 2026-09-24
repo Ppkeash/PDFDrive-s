@@ -40,6 +40,7 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     path === "/" ||
     path.startsWith("/login") ||
+    path.startsWith("/registro") ||
     path.startsWith("/auth") ||
     path.startsWith("/verify");
 
