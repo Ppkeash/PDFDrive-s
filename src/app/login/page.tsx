@@ -11,6 +11,12 @@ import { Spinner } from "@/components/spinner";
 // Supabase. Sin esto, mostraríamos un botón que falla siempre.
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 
+// El proveedor de email/contraseña está apagado en Supabase: toda la empresa
+// entra con Google. El formulario se mostraba igual, de primero, y era lo
+// primero que alguien intentaba -- para recibir siempre un error. Se oculta
+// salvo que se encienda el proveedor y esta variable a la vez.
+const PASSWORD_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PASSWORD_AUTH === "true";
+
 /** Traduce los errores de Supabase a algo accionable, en español. */
 function explain(raw: string, status?: number): string {
   const m = raw.toLowerCase();
@@ -124,9 +130,12 @@ function LoginForm() {
             Entrar
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Accede para ver y firmar tus documentos.
+            {PASSWORD_ENABLED
+              ? "Accede para ver y firmar tus documentos."
+              : "Entra con la cuenta de Google de tu trabajo."}
           </p>
 
+          {PASSWORD_ENABLED && (
           <form onSubmit={handleEmail} className="mt-8 flex flex-col gap-4">
             <Field
               id="email"
@@ -157,17 +166,22 @@ function LoginForm() {
               {loading ? "Un momento…" : "Entrar"}
             </button>
           </form>
+          )}
 
           {GOOGLE_ENABLED && (
             <>
-              <div className="my-6 flex items-center gap-4">
-                <span className="h-px flex-1 bg-line" />
-                <span className="text-micro uppercase text-muted">o</span>
-                <span className="h-px flex-1 bg-line" />
-              </div>
+              {PASSWORD_ENABLED && (
+                <div className="my-6 flex items-center gap-4">
+                  <span className="h-px flex-1 bg-line" />
+                  <span className="text-micro uppercase text-muted">o</span>
+                  <span className="h-px flex-1 bg-line" />
+                </div>
+              )}
               <button
                 onClick={handleGoogle}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded border border-line-strong bg-surface px-4 text-sm font-medium transition-colors hover:bg-surface-2"
+                className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded border border-line-strong bg-surface px-4 text-sm font-medium transition-colors hover:bg-surface-2 ${
+                  PASSWORD_ENABLED ? "" : "mt-8"
+                }`}
               >
                 <GoogleGlyph /> Continuar con Google
               </button>

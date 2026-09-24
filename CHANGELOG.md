@@ -10,6 +10,25 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+### El login mostraba un formulario que no podía funcionar
+Visto al revisar la aplicación desplegada en un navegador, antes de invitar a
+nadie al piloto.
+
+El proveedor de email/contraseña está apagado en Supabase — toda la empresa
+entra con Google — pero la pantalla de entrada seguía mostrando el formulario
+de correo y contraseña **de primero**, con "Continuar con Google" debajo de un
+separador. Era lo primero que alguien iba a intentar, y siempre iba a dar
+error.
+
+Ahora el formulario se oculta salvo que se encienda `NEXT_PUBLIC_ENABLE_
+PASSWORD_AUTH` junto con el proveedor en Supabase, y Google queda como la
+única acción. El texto pasa de "Accede para ver y firmar tus documentos" a
+"Entra con la cuenta de Google de tu trabajo", que dice qué hacer.
+
+Comprobado de paso, en producción y con un navegador de verdad: `/registro`
+canjea el código, muestra el segundo paso con el correo declarado y ofrece
+entrar con Google. El flujo completo funciona.
+
 ### Los límites del plan dejan de ser decorativos
 Migración `0016_limites_de_plan.sql` aplicada, más la pantalla `/planes` y un
 aviso en el Drive. **El cobro arranca apagado.**
