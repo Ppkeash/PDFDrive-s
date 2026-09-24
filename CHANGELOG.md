@@ -10,6 +10,48 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+### Fase C: la aplicación por fin manda correos
+Migración `0014_bandeja_de_correo.sql` aplicada y edge function
+`send-emails` escrita. **Falta configurar el proveedor para que salgan.**
+
+Hasta hoy la aplicación no mandaba un solo correo. "Compartir por correo"
+daba acceso y no avisaba a nadie: quien recibía un documento para firmar no
+se enteraba salvo que se lo dijeran por WhatsApp. El link de invitación de
+`0006` era el parche a eso.
+
+Los correos no salen en el momento de la acción: se encolan en
+`email_outbox` y los manda aparte la edge function. Que el proveedor esté
+caído no puede hacer que firmar falle, y un aviso que no salió se reintenta
+en vez de perderse sin rastro.
+
+Tres avisos, encolados por trigger:
+
+- **Te compartieron un documento.** Cambia el texto según el papel: a un
+  firmante se le dice que le pidieron firmar, a un lector que le compartieron.
+- **El documento quedó firmado.** Le llega a todos los implicados, dueño
+  incluido. Es el cierre del trámite y es lo que la gente espera saber sin
+  tener que entrar a mirar.
+- **La prueba se vence** (3 días antes) **y se venció**. Hoy la prueba de la
+  `0012` caduca en silencio.
+
+Todo tiene clave de deduplicación: encolar dos veces no manda dos correos.
+Comprobado — cerrar el mismo documento dos veces deja 2 avisos, no 4, y
+correr la tarea de pruebas dos veces deja 1 correo, no 2.
+
+Reintentos con espera creciente (5, 10, 20, 40 minutos) y se abandona a los 5
+intentos, con el error a la vista en la fila. Reintentar para siempre solo
+esconde el problema.
+
+Los triggers ya están vivos, así que la cola se llena desde ahora aunque el
+envío no esté conectado. Para que el día que se conecte no salga de golpe
+todo el atraso —"te pidieron firmar" de hace tres semanas, de documentos ya
+cerrados— la función descarta lo encolado hace más de 3 días.
+
+El proveedor se elige con `EMAIL_PROVIDER`. Hoy toca SMTP: el proyecto no
+tiene dominio propio, y sin dominio verificado los servicios tipo Resend solo
+dejan escribirle a la cuenta del dueño. El día que haya dominio se cambia la
+variable y nada más.
+
 ### Plan B del registro: códigos de invitación
 Migración `0013_codigos_de_invitacion.sql` aplicada, más la pantalla
 `/registro`. Probado contra producción con transacciones que revierten.
