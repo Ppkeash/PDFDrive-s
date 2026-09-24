@@ -10,6 +10,41 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+### Registro restringido y prueba gratuita de 14 días
+Migración `0012_registro_restringido_y_prueba.sql` — **escrita, sin aplicar**,
+igual que la `0009` en la que se apoya.
+
+Se aclaró el modelo del producto: no es un SaaS abierto ni una herramienta
+interna sin cobro, sino un SaaS para **una sola empresa**. Cualquiera de
+dentro debe poder darse de alta solo; nadie de fuera; y la misma persona no
+debe poder encadenar pruebas gratuitas creándose cuentas.
+
+**La IP no sirve para eso.** Una oficina entera sale por una sola IP:
+limitarlo por IP dejaría fuera a todos menos al primero que se registre — que
+es justo el cliente. Y no protege nada, porque cambiar de IP es apagar el
+WiFi del celular. Lo que sí identifica a una persona es su correo de trabajo,
+y ese lo controla la empresa.
+
+- **`signup_allowlist`**: acepta dominios (`laempresa.com`) y correos sueltos.
+  Si la empresa tiene dominio propio basta una fila; si su gente usa correos
+  personales, se aprueban de a uno. Mismo mecanismo.
+- **El filtro vive en un trigger sobre `auth.users`**, no en el formulario: el
+  endpoint de OAuth de Supabase es público, así que una comprobación en la
+  interfaz no protegería nada.
+- **`app_settings`** con `signup_restriction_enabled` en `false`. Aplicar la
+  migración no cambia nada; se enciende cuando la lista tenga filas, porque
+  encenderla vacía dejaría fuera a todo el mundo.
+- **Prueba de 14 días** al crear el espacio personal, marcada en
+  `billing_subjects.trial_granted_at`. Va en el sujeto y no en la cuenta: una
+  segunda cuenta de la misma persona no devuelve otra prueba.
+- Se corrige de paso el `grant select on billing_plans to anon` que traía la
+  `0009`, escrita antes del endurecimiento de hoy.
+
+La `0009` ya contemplaba lo demás: `workspaces` con `kind` personal/team,
+suscripciones con estado `trialing`, y `wompi`/`mercadopago` como proveedores.
+Cuando la empresa negocie un plan para todos, se crea un workspace `team` y
+mandan sus límites — sin rehacer el cobro individual.
+
 ### Auditoría de RLS: el directorio de correos estaba abierto
 Migraciones `0010_endurecer_rls.sql` y `0011_revocar_execute_public.sql`,
 aplicadas a producción y verificadas contra la API.
