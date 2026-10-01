@@ -21,6 +21,8 @@ import { canEdit, canSign as roleCanSign, roleLabel } from "@/lib/roles";
 import type { DocStatus, ShareRole } from "@/types";
 import {
   BadgeCheck,
+  Minus,
+  Plus,
   Link2,
   Check,
   Lock,
@@ -475,6 +477,22 @@ export function DocumentWorkspace({
     setPadOpen(false);
   }
 
+  /**
+   * Escalar sin tocar el tirador de la esquina.
+   *
+   * Arrastrar una esquina de 14 píxeles es incómodo con el mouse e inviable
+   * en un celular. La firma se escala entera desde su esquina inferior
+   * izquierda, que es la que se usa para alinearla con un renglón.
+   */
+  function escalarPending(factor: number) {
+    setPending((p) => {
+      if (!p) return p;
+      const w = Math.min(400, Math.max(24, p.box.w * factor));
+      const h = (w / p.box.w) * p.box.h;
+      return { ...p, box: { ...p.box, w, h } };
+    });
+  }
+
   /** Crea el campo donde el usuario dejó la firma y la estampa allí. */
   async function placePending() {
     if (!pending) return false;
@@ -524,9 +542,30 @@ export function DocumentWorkspace({
           // de confirmar tiene que seguir a mano.
           <div className="sticky top-[76px] z-20 mb-3 flex flex-wrap items-center gap-3 rounded border border-seal/30 border-l-2 border-l-seal bg-seal-soft px-3 py-2.5 shadow-pop">
             <p className="flex-1 text-sm text-seal">
-              Arrastra tu firma donde quieras, tira de la esquina para el
-              tamaño, o haz clic en otro punto del documento.
+              Arrastra tu firma donde quieras, o haz clic en otro punto del
+              documento. Con − y + le ajustas el tamaño.
             </p>
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => escalarPending(0.85)}
+                disabled={busy}
+                aria-label="Hacer la firma más pequeña"
+                className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-60"
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+              <span className="text-micro uppercase text-seal">Tamaño</span>
+              <button
+                onClick={() => escalarPending(1.18)}
+                disabled={busy}
+                aria-label="Hacer la firma más grande"
+                className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-60"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+
             <div className="flex shrink-0 gap-2">
               <button
                 onClick={() => setPending(null)}

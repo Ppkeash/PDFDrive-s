@@ -12,6 +12,14 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Los botones de tamaño faltaban donde más se usan
+Los botones de − y + del cambio anterior quedaron solo en la pantalla del
+enlace público. Quien firma con su cuenta, dentro de la aplicación, no veía
+ningún control nuevo: solo notaba que el recuadro ya bajaba más de tamaño.
+
+Ahora están también en la barra que aparece al colocar la firma con sesión, y
+el texto de esa barra lo dice en vez de hablar solo del tirador de la esquina.
+
 ### Al achicar la firma, desaparecía
 Reportado al firmar: queriendo meter la firma en una casilla pequeña, el
 recuadro no bajaba de cierto tamaño y la firma se esfumaba.
