@@ -21,6 +21,7 @@ import { canEdit, canSign as roleCanSign, roleLabel } from "@/lib/roles";
 import type { DocStatus, ShareRole } from "@/types";
 import {
   BadgeCheck,
+  Link2,
   Check,
   Lock,
   MapPin,
@@ -73,6 +74,14 @@ type Signer = {
   field_id: string | null;
   signed_at: string;
   cert_subject: string | null;
+  /**
+   * Con qué respaldo se firmó. `cuenta` = identidad verificada por Google.
+   * `enlace` = enlace de un solo uso: el nombre lo escribió quien lo abrió, y
+   * lo único que lo sostiene es haber tenido el enlace. No valen lo mismo y
+   * quien revisa el acta tiene que poder distinguirlos sin preguntar.
+   */
+  signer_kind?: "cuenta" | "enlace";
+  quien?: string;
 };
 
 type VerifySignature = {
@@ -834,9 +843,31 @@ export function DocumentWorkspace({
                     className="rounded border border-line bg-surface-2 p-3"
                   >
                     <div className="flex items-center gap-1.5 text-sm font-medium text-ok">
-                      <BadgeCheck className="h-4 w-4 shrink-0" /> Firmado
+                      <BadgeCheck className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        {s.quien ?? "Firmado"}
+                      </span>
                     </div>
                     <dl className="mt-2 flex flex-col gap-1">
+                      <Row term="Respaldo">
+                        {s.signer_kind === "enlace" ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Link2
+                              className="h-3.5 w-3.5 shrink-0 text-wait"
+                              aria-hidden
+                            />
+                            Enlace, nombre escrito por la persona
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5">
+                            <ShieldCheck
+                              className="h-3.5 w-3.5 shrink-0 text-ok"
+                              aria-hidden
+                            />
+                            Cuenta verificada con Google
+                          </span>
+                        )}
+                      </Row>
                       <Row term="Fecha">
                         {new Date(s.signed_at).toLocaleString("es", {
                           dateStyle: "medium",

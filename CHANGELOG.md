@@ -12,6 +12,25 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### El documento ya dice con qué respaldo firmó cada quien
+Hasta ahora la ficha de firmas decía solo "Firmado" y la fecha. Con los
+enlaces sin cuenta eso dejaba de ser suficiente: una firma hecha con cuenta de
+Google y una hecha por alguien que escribió su nombre en un enlace se veían
+exactamente igual, y no valen lo mismo.
+
+Ahora cada firma muestra **quién** y **con qué respaldo**:
+
+- *Cuenta verificada con Google* — la identidad la confirmó Google.
+- *Enlace, nombre escrito por la persona* — lo único que la sostiene es haber
+  tenido el enlace.
+
+El nombre sale de `profiles` para las firmas con cuenta y del nombre escrito
+para las de enlace. Si la cuenta se borró, se dice así en vez de dejar un
+hueco.
+
+Sin esto, la distinción que guarda la base desde la `0017` no le servía de
+nada a quien revisa un acta.
+
 ### Enlace para firmar sin cuenta
 Migración `0017_enlaces_de_firma.sql`, edge function `open-signing-link`,
 cambios en `sign-pdf` y pantalla pública `/firmar/[token]`. Probado de punta a

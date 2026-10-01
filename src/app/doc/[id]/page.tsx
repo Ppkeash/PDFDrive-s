@@ -53,7 +53,9 @@ export default async function DocumentPage({
         .order("order_index"),
       supabase
         .from("signatures")
-        .select("signer_id, field_id, signed_at, cert_subject")
+        .select(
+          "signer_id, field_id, signed_at, cert_subject, signer_name, signer_kind"
+        )
         .eq("document_id", doc.id)
         .order("signed_at"),
       supabase
@@ -77,10 +79,44 @@ export default async function DocumentPage({
     : ((shares.find((s) => s.email.toLowerCase() === myEmail)
         ?.role as ShareRole) ?? "lector");
 
-  const signatures = signatureRows ?? [];
+  const signaturesRaw = signatureRows ?? [];
   const signedFieldIds = new Set(
-    signatures.map((s) => s.field_id).filter(Boolean)
+    signaturesRaw.map((s) => s.field_id).filter(Boolean)
   );
+
+  // Quién firmó. Con cuenta se resuelve contra `profiles`; por enlace el único
+  // nombre que existe es el que esa persona escribió al abrirlo. La diferencia
+  // se muestra en la ficha: una firma con cuenta está respaldada por Google,
+  // una por enlace solo por el enlace.
+  const signerIds = [
+    ...new Set(signaturesRaw.map((s) => s.signer_id).filter(Boolean)),
+  ] as string[];
+
+  const { data: signerProfiles } = signerIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, name, email")
+        .in("id", signerIds)
+    : { data: [] };
+
+  const porId = new Map(
+    (signerProfiles ?? []).map((p) => [
+      p.id,
+      p.name?.trim() || p.email || "Alguien con cuenta",
+    ])
+  );
+
+  const signatures = signaturesRaw.map((s) => ({
+    signer_id: s.signer_id,
+    field_id: s.field_id,
+    signed_at: s.signed_at,
+    cert_subject: s.cert_subject,
+    signer_kind: (s.signer_kind as "cuenta" | "enlace") ?? "cuenta",
+    quien:
+      s.signer_kind === "enlace"
+        ? s.signer_name?.trim() || "Sin nombre"
+        : (s.signer_id ? porId.get(s.signer_id) : null) ?? "Cuenta eliminada",
+  }));
 
   const fields: SignField[] = (fieldRows ?? []).map((f) => ({
     id: f.id,
