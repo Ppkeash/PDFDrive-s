@@ -10,7 +10,7 @@ import {
 } from "@/components/pdf-viewer";
 import { RubricPad } from "@/components/rubric-pad";
 import { Spinner } from "@/components/spinner";
-import { ShieldCheck } from "lucide-react";
+import { Minus, Plus, ShieldCheck } from "lucide-react";
 
 export interface Cupo {
   id: string;
@@ -123,6 +123,23 @@ export function FirmarCliente({
   async function alTrazar(png: string) {
     setPendiente({ src: png, page: 1, box: await medirRubrica(png) });
     setPadAbierto(false);
+  }
+
+  /**
+   * Escalar sin tocar el tirador de la esquina.
+   *
+   * Arrastrar una esquina de 14 píxeles es incómodo en un computador e
+   * inviable en un celular, que es donde más gente va a firmar. La firma se
+   * escala entera desde su esquina inferior izquierda, que es la que la gente
+   * usa para alinearla con un renglón.
+   */
+  function escalar(factor: number) {
+    setPendiente((p) => {
+      if (!p) return p;
+      const w = Math.min(400, Math.max(24, p.box.w * factor));
+      const h = (w / p.box.w) * p.box.h;
+      return { ...p, box: { ...p.box, w, h } };
+    });
   }
 
   async function confirmarFirma() {
@@ -308,8 +325,9 @@ export function FirmarCliente({
             <span>
               {pendiente ? (
                 <>
-                  Arrastra tu firma hasta el renglón que te corresponde y
-                  confirma. Después no se puede mover desde este enlace.
+                  Arrástrala hasta el renglón que te corresponde y ajústale
+                  el tamaño si hace falta. Después no se puede mover desde este
+                  enlace.
                 </>
               ) : (
                 <>
@@ -340,6 +358,26 @@ export function FirmarCliente({
           <div className="sticky bottom-0 mt-5 flex flex-col gap-2 bg-paper/95 py-4 backdrop-blur">
             {pendiente ? (
               <>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => escalar(0.85)}
+                    disabled={firmando}
+                    aria-label="Hacer la firma más pequeña"
+                    className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="text-sm text-muted">Tamaño</span>
+                  <button
+                    onClick={() => escalar(1.18)}
+                    disabled={firmando}
+                    aria-label="Hacer la firma más grande"
+                    className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+
                 <button
                   onClick={confirmarFirma}
                   disabled={firmando}

@@ -29,8 +29,11 @@ export type FieldBox = { x: number; y: number; w: number; h: number };
 
 /** Tamaño por defecto de un campo nuevo, en puntos PDF. */
 export const DEFAULT_FIELD = { w: 170, h: 55 };
-const MIN_W = 70;
-const MIN_H = 28;
+// Mínimos en puntos PDF. Estaban en 70x28, que es mas grande que una casilla
+// de tabla: al intentar encoger la firma para meterla en una, el recuadro se
+// plantaba en ese tamano y no entraba.
+const MIN_W = 24;
+const MIN_H = 10;
 
 /** Firma ya trazada que se está colocando, antes de confirmarla. */
 export type PendingSignature = {
@@ -261,6 +264,20 @@ export function PdfViewer({
 
     if (drag.mode === "move") {
       next = { ...b, x: b.x + dx, y: b.y - dy };
+    } else if (drag.id === PENDING) {
+      // Una firma trazada se escala entera, nunca se deforma. Antes el alto y
+      // el ancho se movian por separado: al angostar el recuadro, la imagen se
+      // encajaba dentro conservando su proporcion y quedaba una franja de nada
+      // -- parecia que la firma se hubiera borrado.
+      //
+      // El tirador de la esquina mueve las dos medidas, asi que el factor sale
+      // del promedio de ambas: tirar en diagonal agranda, tirar hacia dentro
+      // encoge, y en los dos casos la firma se mantiene legible.
+      const ratio = b.w / Math.max(b.h, 0.01);
+      const f = ((b.w + dx) / b.w + (b.h + dy) / b.h) / 2;
+      const w = Math.max(MIN_W, Math.min(info.width, b.w * f));
+      const h = Math.max(MIN_H, w / ratio);
+      next = { x: b.x, y: b.y + b.h - h, w, h };
     } else {
       // El tirador está abajo a la derecha en pantalla: al bajarlo crece el
       // alto y el borde inferior (la y del PDF) desciende.
@@ -504,7 +521,10 @@ function Box({
           src={image}
           alt="Tu firma"
           draggable={false}
-          className="pointer-events-none h-full w-full object-contain p-1"
+          // Sin relleno: `sign-pdf` encaja la rubrica en el recuadro exacto,
+          // asi que un padding aqui mostraba la firma mas pequena de lo que
+          // iba a quedar, y en recuadros chicos se comia casi todo.
+          className="pointer-events-none h-full w-full object-contain"
         />
       ) : (
         <span

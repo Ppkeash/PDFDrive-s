@@ -12,6 +12,26 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Al achicar la firma, desaparecía
+Reportado al firmar: queriendo meter la firma en una casilla pequeña, el
+recuadro no bajaba de cierto tamaño y la firma se esfumaba.
+
+Tres causas, las tres arregladas:
+
+- **El mínimo era 70×28 puntos**, más grande que una casilla de tabla. El
+  recuadro se plantaba ahí y no entraba. Ahora el mínimo es 24×10.
+- **Ancho y alto se movían por separado**, así que al angostar el recuadro la
+  firma se encajaba dentro conservando su proporción y quedaba una franja de
+  nada: parecía borrada. Ahora una firma trazada **se escala entera y nunca se
+  deforma** — el tirador de la esquina mueve las dos medidas a la vez.
+- **La vista previa llevaba relleno y el estampado no**, así que la firma se
+  veía más pequeña de lo que iba a quedar, y en recuadros chicos ese relleno se
+  comía casi todo. Ahora coinciden.
+
+Van además **botones de más y menos** junto a Confirmar. Arrastrar una esquina
+de 14 píxeles es incómodo en un computador e inviable en un celular, que es
+donde más gente va a firmar.
+
 ### Con alto contraste no se veía la firma al trazarla
 Reportado por alguien firmando de verdad: el recuadro salía negro y el trazo
 no se notaba.
