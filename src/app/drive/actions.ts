@@ -253,9 +253,13 @@ export async function revokeSigningLink(documentId: string, linkId: string) {
  * Un solo enlace que se manda al grupo. Quien lo abre escribe su nombre y
  * firma; no hay lista que preparar.
  *
- * El tope no es un número que alguien configure: son los espacios de firma
- * que tenga el documento. Cuando se ocupan todos, el enlace deja de admitir
- * firmas solo. Por eso hay que poner un recuadro por persona esperada.
+ * El tope lo escoge quien envía al crearlo, y el enlace lleva su propio
+ * contador. Deducirlo de los espacios libres del documento tenía un problema:
+ * si el documento ya traía recuadros de antes, el enlace admitía más firmas de
+ * las que su dueño creía haber autorizado.
+ *
+ * Vence en horas, no en días: un acta se firma en la reunión o no se firma. Un
+ * enlace que sigue vivo dos semanas después es una puerta abierta sin motivo.
  *
  * Tiene un hueco conocido y aceptado: como el nombre es libre, nada impide
  * que la misma persona firme dos veces con nombres distintos, ni que alguien
@@ -274,7 +278,8 @@ export async function revokeSigningLink(documentId: string, linkId: string) {
  */
 export async function createOpenSigningLink(
   documentId: string,
-  diasDeVigencia = 14
+  cuantasFirmas: number,
+  horasDeVigencia = 2
 ) {
   const supabase = createClient();
   const {
@@ -282,16 +287,21 @@ export async function createOpenSigningLink(
   } = await supabase.auth.getUser();
   if (!user) return { error: "No autenticado" };
 
+  const cupo = Math.round(cuantasFirmas);
+  if (!Number.isFinite(cupo) || cupo < 1 || cupo > 200)
+    return { error: "El número de firmas no es válido." };
+
+  const horas = Math.min(72, Math.max(1, Math.round(horasDeVigencia)));
+
   const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
-  const expires = new Date(
-    Date.now() + Math.max(1, diasDeVigencia) * 86_400_000
-  ).toISOString();
+  const expires = new Date(Date.now() + horas * 3_600_000).toISOString();
 
   const { error } = await supabase.from("signing_links").insert({
     document_id: documentId,
     token,
     kind: "grupal",
     created_by: user.id,
+    max_signatures: cupo,
     expires_at: expires,
   });
   if (error) return { error: error.message };

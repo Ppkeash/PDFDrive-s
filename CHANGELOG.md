@@ -12,6 +12,35 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Cada quien coloca su firma, y el enlace dura 2 horas
+Migración `0020_enlace_con_cupo_y_vencimiento_corto.sql`, cambios en
+`sign-pdf` y en las dos pantallas. Probado contra producción.
+
+Tres cosas que no estaban bien:
+
+**Nadie sabía dónde firmar.** La rúbrica caía donde el servidor decidiera. Se
+pensó en crear los recuadros automáticamente, pero no hacen falta: en un acta
+cada quien sabe en qué renglón va. Ahora quien firma **arrastra su rúbrica
+hasta el sitio** y confirma. Es el mismo gesto que ya existía para quien tiene
+cuenta, ahora también sin ella.
+
+**El tope se deducía de los espacios libres del documento.** Si el documento ya
+traía recuadros de antes, el enlace admitía más firmas de las que su dueño
+creía haber autorizado. Ahora se escoge al crearlo —10, 20, 50 o 100— y el
+enlace lleva su propio contador.
+
+**Vencía a los 14 días.** Un acta se firma en la reunión o no se firma; un
+enlace vivo dos semanas después es una puerta abierta sin motivo. Ahora **2
+horas**.
+
+La plaza se reserva antes de estampar, en una sola sentencia condicionada: si
+diez personas pulsan firmar a la vez sobre las últimas dos plazas, solo dos
+pasan. Y si el estampado falla después de reservar, la plaza se devuelve — un
+error de red no puede robarle un cupo al grupo.
+
+La posición que llega del cliente se valida antes de usarse: página dentro de
+rango, coordenadas no negativas y tamaño entre límites razonables.
+
 ### El enlace sin cuenta vuelve a ser un solo enlace y ya
 Migración `0019_enlace_abierto_sin_lista.sql`. Deshace la lista de nombres de
 la `0018` como forma normal de usarlo.

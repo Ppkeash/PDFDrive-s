@@ -1,7 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { PdfViewer, type SignField } from "@/components/pdf-viewer";
+import { useRef, useState } from "react";
+import {
+  PdfViewer,
+  DEFAULT_FIELD,
+  type FieldBox,
+  type PendingSignature,
+  type SignField,
+} from "@/components/pdf-viewer";
 import { RubricPad } from "@/components/rubric-pad";
 import { Spinner } from "@/components/spinner";
 import { ShieldCheck } from "lucide-react";
@@ -22,10 +28,10 @@ export interface DatosDelEnlace {
 }
 
 /**
- * Marca del navegador, para notar si dos nombres de la misma lista se firman
- * desde el mismo equipo. No bloquea nada: un acta firmada por todos en la
- * misma tablet, pasándola por la mesa, es un uso normal. Solo queda anotado
- * para quien después revise el documento.
+ * Marca del navegador, para notar si dos firmas del mismo enlace salen del
+ * mismo equipo. No bloquea nada: un acta firmada por todos en la misma tablet,
+ * pasándola por la mesa, es un uso normal. Solo queda anotado para quien
+ * después revise el documento.
  */
 function marcaDelDispositivo(): string | null {
   try {
@@ -44,10 +50,14 @@ function marcaDelDispositivo(): string | null {
 /**
  * Firma por enlace, sin cuenta.
  *
- * Son tres pasos y en este orden a propósito: primero el nombre, después leer
- * el documento, y la rúbrica de última. Pedir el nombre al final, con la firma
- * ya trazada, invita a escribir cualquier cosa para salir del paso; pedirlo de
- * entrada lo convierte en parte de identificarse.
+ * El orden es a propósito: primero el nombre, después leer el documento, y la
+ * firma de última. Pedir el nombre al final, con la rúbrica ya trazada, invita
+ * a escribir cualquier cosa para salir del paso.
+ *
+ * La posición la escoge quien firma, arrastrando su rúbrica hasta el renglón
+ * que le toca. No hay recuadros preparados de antemano: en un acta cada quien
+ * sabe dónde va, y obligar a quien envía a dibujar veinte casillas antes de
+ * mandar nada era más trabajo del que ahorraba.
  */
 export function FirmarCliente({
   token,
@@ -57,24 +67,25 @@ export function FirmarCliente({
   datos: DatosDelEnlace;
 }) {
   const cupos = datos.cupos ?? [];
-  // Una lista de un solo nombre no es una lista: pedirle a alguien que
-  // escoja entre una sola opción es ruido. Se le confirma y ya.
-  const unaSolaPersona = datos.kind === "grupal" && cupos.length === 1;
-  // Grupal con lista = se escoge el nombre. Sin lista = se escribe.
-  const grupal = cupos.length > 1;
-  const [nombre, setNombre] = useState(
-    cupos.length === 1 ? cupos[0].nombre : ""
-  );
+  const conLista = cupos.length > 1;
+  const unaSolaPersona = cupos.length === 1;
+
+  const [nombre, setNombre] = useState(unaSolaPersona ? cupos[0].nombre : "");
   const [cupoElegido, setCupoElegido] = useState<string | null>(
-    cupos.length === 1 ? cupos[0].id : null
+    unaSolaPersona ? cupos[0].id : null
   );
   const [identificado, setIdentificado] = useState(false);
   const [padAbierto, setPadAbierto] = useState(false);
+  const [pendiente, setPendiente] = useState<PendingSignature | null>(null);
   const [firmando, setFirmando] = useState(false);
   const [listo, setListo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const campos: SignField[] = datos.campo
+  // Tamaños de página en puntos PDF: sin esto la firma aparecería en una
+  // esquina al azar en vez de centrada.
+  const tamanos = useRef<{ width: number; height: number }[]>([]);
+
+  const campoFijo: SignField[] = datos.campo
     ? [
         {
           id: "destino",
@@ -88,7 +99,34 @@ export function FirmarCliente({
       ]
     : [];
 
-  async function firmar(rubrica: string) {
+  /** Del trazo sale el ancho; el alto es fijo, para que todas se vean parejas. */
+  async function medirRubrica(png: string): Promise<FieldBox> {
+    const size = await new Promise<{ w: number; h: number }>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const h = DEFAULT_FIELD.h;
+        const ratio = img.width / Math.max(img.height, 1);
+        resolve({ w: Math.min(340, Math.max(90, h * ratio)), h });
+      };
+      img.onerror = () => resolve({ w: DEFAULT_FIELD.w, h: DEFAULT_FIELD.h });
+      img.src = png;
+    });
+
+    const pagina = tamanos.current[0] ?? { width: 595, height: 842 };
+    return {
+      ...size,
+      x: (pagina.width - size.w) / 2,
+      y: pagina.height * 0.3,
+    };
+  }
+
+  async function alTrazar(png: string) {
+    setPendiente({ src: png, page: 1, box: await medirRubrica(png) });
+    setPadAbierto(false);
+  }
+
+  async function confirmarFirma() {
+    if (!pendiente) return;
     setFirmando(true);
     setError(null);
 
@@ -106,7 +144,8 @@ export function FirmarCliente({
             signerName: nombre.trim(),
             slotId: cupoElegido,
             deviceId: marcaDelDispositivo(),
-            rubric: rubrica,
+            rubric: pendiente.src,
+            box: { page: pendiente.page, ...pendiente.box },
           }),
         }
       );
@@ -114,16 +153,13 @@ export function FirmarCliente({
 
       if (!r.ok || data?.error) {
         setFirmando(false);
-        setPadAbierto(false);
         return setError(data?.error ?? "No se pudo firmar.");
       }
 
-      setPadAbierto(false);
       setFirmando(false);
       setListo(true);
     } catch {
       setFirmando(false);
-      setPadAbierto(false);
       setError("No se pudo conectar. Revisa tu internet y vuelve a intentar.");
     }
   }
@@ -132,7 +168,7 @@ export function FirmarCliente({
     return (
       <Cartel
         titulo="Listo, quedó firmado"
-        detalle={`Tu firma quedó registrada en "${datos.documento}" a nombre de ${nombre.trim()}. Este enlace ya no sirve otra vez.`}
+        detalle={`Tu firma quedó registrada en "${datos.documento}" a nombre de ${nombre.trim()}.`}
         ok
       />
     );
@@ -150,12 +186,12 @@ export function FirmarCliente({
         )}
       </header>
 
-      {!identificado && grupal ? (
+      {!identificado && conLista ? (
         <section className="mt-8 rounded-lg border border-line bg-surface p-6">
           <h2 className="font-display text-lg font-semibold">¿Quién eres?</h2>
           <p className="mt-1.5 text-sm text-muted">
-            Escoge tu nombre de la lista. La armó quien te envió el documento, y
-            cada nombre se puede usar una sola vez.
+            Escoge tu nombre de la lista. Cada nombre se puede usar una sola
+            vez.
           </p>
 
           <ul className="mt-5 flex flex-col gap-1.5">
@@ -197,11 +233,6 @@ export function FirmarCliente({
           >
             Ver el documento
           </button>
-
-          <p className="mt-4 text-xs text-muted">
-            ¿No está tu nombre? Avísale a quien te envió el enlace — solo esa
-            persona puede agregarlo.
-          </p>
         </section>
       ) : !identificado && unaSolaPersona ? (
         <section className="mt-8 rounded-lg border border-line bg-surface p-6">
@@ -243,7 +274,7 @@ export function FirmarCliente({
                 htmlFor="nombre"
                 className="text-micro uppercase text-muted"
               >
-                Nombre completo
+                Nombre y apellido
               </label>
               <input
                 id="nombre"
@@ -270,35 +301,80 @@ export function FirmarCliente({
       ) : (
         <>
           <p className="mt-5 flex gap-2.5 rounded border-l-2 border-wait bg-wait-soft px-4 py-3 text-sm text-muted">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-wait" aria-hidden />
+            <ShieldCheck
+              className="mt-0.5 h-4 w-4 shrink-0 text-wait"
+              aria-hidden
+            />
             <span>
-              Vas a firmar como{" "}
-              <strong className="font-medium text-ink">{nombre.trim()}</strong>.
-              Lee el documento antes de firmar — después no se puede deshacer
-              desde este enlace.
+              {pendiente ? (
+                <>
+                  Arrastra tu firma hasta el renglón que te corresponde y
+                  confirma. Después no se puede mover desde este enlace.
+                </>
+              ) : (
+                <>
+                  Vas a firmar como{" "}
+                  <strong className="font-medium text-ink">
+                    {nombre.trim()}
+                  </strong>
+                  . Lee el documento antes de firmar.
+                </>
+              )}
             </span>
           </p>
 
           <div className="mt-5 flex-1">
-            <PdfViewer url={datos.pdfUrl} fields={campos} />
+            <PdfViewer
+              url={datos.pdfUrl}
+              fields={campoFijo}
+              pending={pendiente}
+              onPendingChange={(page, box) =>
+                setPendiente((p) => (p ? { ...p, page, box } : p))
+              }
+              onPagesReady={(p) => {
+                tamanos.current = p;
+              }}
+            />
           </div>
 
           <div className="sticky bottom-0 mt-5 flex flex-col gap-2 bg-paper/95 py-4 backdrop-blur">
-            <button
-              onClick={() => setPadAbierto(true)}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90"
-            >
-              Firmar documento
-            </button>
-            <button
-              onClick={() => {
-                setIdentificado(false);
-                if (grupal) setCupoElegido(null);
-              }}
-              className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink"
-            >
-              {grupal ? "Escoger otro nombre" : `No soy ${nombre.trim()}`}
-            </button>
+            {pendiente ? (
+              <>
+                <button
+                  onClick={confirmarFirma}
+                  disabled={firmando}
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {firmando && <Spinner />}
+                  {firmando ? "Firmando…" : "Confirmar firma aquí"}
+                </button>
+                <button
+                  onClick={() => setPendiente(null)}
+                  disabled={firmando}
+                  className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink disabled:opacity-50"
+                >
+                  Volver a dibujarla
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setPadAbierto(true)}
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90"
+                >
+                  Firmar documento
+                </button>
+                <button
+                  onClick={() => {
+                    setIdentificado(false);
+                    if (conLista) setCupoElegido(null);
+                  }}
+                  className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink"
+                >
+                  {conLista ? "Escoger otro nombre" : `No soy ${nombre.trim()}`}
+                </button>
+              </>
+            )}
           </div>
         </>
       )}
@@ -314,19 +390,11 @@ export function FirmarCliente({
 
       <RubricPad
         open={padAbierto}
-        busy={firmando}
         onCancel={() => setPadAbierto(false)}
-        onConfirm={firmar}
+        onConfirm={alTrazar}
         title={`Dibuja tu firma, ${nombre.trim().split(" ")[0]}`}
+        confirmLabel="Continuar"
       />
-
-      {firmando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20">
-          <div className="flex items-center gap-2 rounded bg-surface px-4 py-3 text-sm shadow-lg">
-            <Spinner /> Firmando…
-          </div>
-        </div>
-      )}
     </div>
   );
 }

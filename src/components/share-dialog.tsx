@@ -51,6 +51,7 @@ export function ShareDialog({
   // Enlace de un solo uso: se muestra una vez, recién creado. No se guarda en
   // la pantalla porque cada uno sirve para una persona y una sola firma.
   const [enlaceUnico, setEnlaceUnico] = useState<string | null>(null);
+  const [cuantasFirmas, setCuantasFirmas] = useState(10);
   const [copiadoUnico, setCopiadoUnico] = useState(false);
 
   useEffect(() => setToken(inviteToken), [inviteToken]);
@@ -58,7 +59,7 @@ export function ShareDialog({
   async function crearEnlaceUnico() {
     setError(null);
     startTransition(async () => {
-      const res = await createOpenSigningLink(documentId, 14);
+      const res = await createOpenSigningLink(documentId, cuantasFirmas, 2);
       if (res.error) return setError(res.error);
       setEnlaceUnico(`${window.location.origin}/firmar/${res.token}`);
       setCopiadoUnico(false);
@@ -346,8 +347,7 @@ export function ShareDialog({
                     <strong className="font-medium text-ink">
                       sin registrarse
                     </strong>
-                    . Firman tantas personas como espacios de firma tenga el
-                    documento. Vence a los 14 días.
+                    . Cada quien coloca su firma donde le corresponde.
                   </p>
 
                   {enlaceUnico ? (
@@ -372,8 +372,12 @@ export function ShareDialog({
                         </button>
                       </div>
                       <p className="text-xs text-muted">
-                        Mándalo a todos. Cada quien escribe su nombre y firma;
-                        se van ocupando los espacios del documento.
+                        Mándalo a todos. Cada quien escribe su nombre, coloca su
+                        firma donde le corresponde y listo. Admite{" "}
+                        <strong className="font-medium text-ink">
+                          {cuantasFirmas} firmas
+                        </strong>{" "}
+                        y vence en 2 horas.
                       </p>
                       <button
                         onClick={() => setEnlaceUnico(null)}
@@ -383,14 +387,44 @@ export function ShareDialog({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={crearEnlaceUnico}
-                      disabled={pending}
-                      className="inline-flex h-10 items-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
-                    >
-                      {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
-                      Crear enlace
-                    </button>
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-micro uppercase text-muted">
+                          ¿Cuántas firmas?
+                        </span>
+                        <div className="flex gap-1.5">
+                          {[10, 20, 50, 100].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setCuantasFirmas(n)}
+                              className={`h-9 flex-1 rounded border text-sm font-medium transition-colors ${
+                                cuantasFirmas === n
+                                  ? "border-seal bg-surface-2"
+                                  : "border-line-strong bg-surface hover:bg-surface-2"
+                              }`}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted">
+                        El enlace se apaga solo al llegar a esa cantidad, o a
+                        las 2 horas, lo que pase primero. Un acta se firma en la
+                        reunión; dejar el enlace vivo más tiempo no suma nada.
+                      </p>
+
+                      <button
+                        onClick={crearEnlaceUnico}
+                        disabled={pending}
+                        className="inline-flex h-10 items-center justify-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
+                      >
+                        {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
+                        Crear enlace
+                      </button>
+                    </div>
                   )}
                 </section>
               )}

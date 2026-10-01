@@ -88,6 +88,8 @@ function motivoEnlace(motivo: unknown): string {
       return "Ya firmaron todas las personas de la lista.";
     case "sin_espacios":
       return "Ya no quedan espacios para firmar en este documento.";
+    case "cupo_lleno":
+      return "Este enlace ya recibió todas las firmas que admitía.";
     case "cupo_tomado":
       return "Alguien acaba de firmar con ese nombre. Elige otro o avisa a quien te envió el enlace.";
     default:
@@ -108,6 +110,9 @@ type Field = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
+  // Fuera del try para que el catch pueda devolver la plaza reservada.
+  let usoReservadoGlobal: string | null = null;
+
   try {
     // `seal` cierra el documento sin estampar nada: es el acto definitivo, y
     // solo lo puede hacer quien manda en el documento (dueño o editor).
@@ -123,6 +128,7 @@ Deno.serve(async (req) => {
       signerName,
       slotId,
       deviceId,
+      box,
     } = await req.json();
     if (!seal && !retract && (!rubric || typeof rubric !== "string"))
       return json({ error: "Falta la rúbrica" }, 400);
@@ -138,6 +144,9 @@ Deno.serve(async (req) => {
     // Se conserva para el camino con cuenta: la lectura del documento sigue
     // pasando por RLS, como antes.
     let asUser: ReturnType<typeof createClient> | null = null;
+    // Plaza del enlace ya reservada. Si algo falla después hay que
+    // devolverla: un error de red no puede robarle un cupo al grupo.
+    let usoReservado: string | null = null;
 
     if (typeof linkToken === "string" && linkToken.length > 0) {
       // Un enlace sirve para una cosa: poner una rúbrica. Ni cerrar el
@@ -189,6 +198,66 @@ Deno.serve(async (req) => {
       // con un enlace válido firmaría en un documento ajeno.
       docId = e.document_id as string;
       linkFieldId = (e.field_id as string | null) ?? null;
+
+      if (abierto) {
+        // En un enlace abierto no hay recuadros preparados: cada quien deja su
+        // firma donde corresponda en ese documento. La posición la elige quien
+        // firma y llega aquí; el recuadro se crea en ese sitio.
+        const caja = box as Record<string, unknown> | null;
+        if (!caja) return json({ error: "Falta dónde va la firma." }, 400);
+
+        const num = (v: unknown) =>
+          typeof v === "number" && Number.isFinite(v) ? v : null;
+        const pagina = num(caja.page);
+        const bx = num(caja.x);
+        const by = num(caja.y);
+        const bw = num(caja.w);
+        const bh = num(caja.h);
+
+        if (
+          pagina === null || pagina < 1 || pagina > 2000 ||
+          bx === null || by === null ||
+          bw === null || bh === null ||
+          bx < 0 || by < 0 ||
+          bw < 20 || bh < 10 || bw > 600 || bh > 400
+        )
+          return json({ error: "Esa posición no es válida." }, 400);
+
+        // Reservar antes de crear nada: si diez personas firman a la vez
+        // sobre las últimas dos plazas, solo dos pasan.
+        const { data: reserva } = await admin.rpc("reservar_uso_de_enlace", {
+          p_link_id: e.link_id as string,
+        });
+        const r = reserva as Record<string, unknown> | null;
+        if (!r?.ok) return json({ error: motivoEnlace(r?.motivo) }, 409);
+        usoReservado = e.link_id as string;
+        usoReservadoGlobal = usoReservado;
+
+        const { data: campoNuevo, error: campoErr } = await admin
+          .from("signature_fields")
+          .insert({
+            document_id: docId,
+            page: Math.round(pagina),
+            x: Math.round(bx * 100) / 100,
+            y: Math.round(by * 100) / 100,
+            w: Math.round(bw * 100) / 100,
+            h: Math.round(bh * 100) / 100,
+            assigned_email: null,
+          })
+          .select("id")
+          .single();
+
+        if (campoErr || !campoNuevo) {
+          await admin.rpc("devolver_uso_de_enlace", {
+            p_link_id: e.link_id as string,
+          });
+          usoReservado = null;
+          usoReservadoGlobal = null;
+          return json({ error: "No se pudo guardar la posición." }, 500);
+        }
+
+        linkFieldId = campoNuevo.id as string;
+      }
       actor = {
         userId: null,
         email: null,
@@ -747,6 +816,19 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("sign-pdf:", err);
+    if (usoReservadoGlobal) {
+      try {
+        const admin2 = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        await admin2.rpc("devolver_uso_de_enlace", {
+          p_link_id: usoReservadoGlobal,
+        });
+      } catch (e2) {
+        console.error("devolver_uso_de_enlace:", e2);
+      }
+    }
     return json(
       { error: err instanceof Error ? err.message : "Error al firmar" },
       500

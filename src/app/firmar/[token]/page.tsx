@@ -38,6 +38,11 @@ const MOTIVOS: Record<string, { titulo: string; detalle: string }> = {
     detalle:
       "Todas las personas de la lista firmaron este documento. Si creías que faltaba tu firma, avísale a quien te envió el enlace.",
   },
+  cupo_lleno: {
+    titulo: "Este enlace ya se llenó",
+    detalle:
+      "Recibió todas las firmas que admitía. Si faltaba la tuya, pídele uno nuevo a quien te lo envió.",
+  },
   sin_espacios: {
     titulo: "Ya no quedan espacios",
     detalle:
