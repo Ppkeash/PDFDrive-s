@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  createGroupSigningLink,
+  createOpenSigningLink,
   generateInviteLink,
   removeShare,
   revokeInviteLink,
@@ -21,10 +21,6 @@ export type ShareRow = {
   /** Invitado que aún no tiene cuenta: el acceso se activa al registrarse. */
   pending: boolean;
 };
-
-/** Ejemplo del cuadro de nombres. Fuera del JSX por los saltos de línea. */
-const PLACEHOLDER_LISTA =
-  "¿Quiénes van a firmar? Uno por línea:\nJuan Pérez\nMaría Gómez\nRepresentante de Acme";
 
 export function ShareDialog({
   documentId,
@@ -54,26 +50,15 @@ export function ShareDialog({
   const [copied, setCopied] = useState(false);
   // Enlace de un solo uso: se muestra una vez, recién creado. No se guarda en
   // la pantalla porque cada uno sirve para una persona y una sola firma.
-  const [listaNombres, setListaNombres] = useState("");
   const [enlaceUnico, setEnlaceUnico] = useState<string | null>(null);
   const [copiadoUnico, setCopiadoUnico] = useState(false);
 
   useEffect(() => setToken(inviteToken), [inviteToken]);
 
-  const nombresDeLaLista = listaNombres
-    .split("\n")
-    .map((n) => n.trim())
-    .filter((n) => n.length >= 3);
-
   async function crearEnlaceUnico() {
     setError(null);
     startTransition(async () => {
-      const res = await createGroupSigningLink(
-        documentId,
-        nombresDeLaLista,
-        null,
-        14
-      );
+      const res = await createOpenSigningLink(documentId, 14);
       if (res.error) return setError(res.error);
       setEnlaceUnico(`${window.location.origin}/firmar/${res.token}`);
       setCopiadoUnico(false);
@@ -356,13 +341,13 @@ export function ShareDialog({
                     <strong className="font-medium text-ink">
                       Para gente de fuera
                     </strong>{" "}
-                    que no va a crear cuenta: un proveedor, un cliente, los
-                    asistentes de una reunión. Abren el enlace, escogen su
-                    nombre y firman —{" "}
+                    que no va a crear cuenta. Un solo enlace para todos: cada
+                    quien escribe su nombre y firma,{" "}
                     <strong className="font-medium text-ink">
                       sin registrarse
                     </strong>
-                    . Vence a los 14 días.
+                    . Firman tantas personas como espacios de firma tenga el
+                    documento. Vence a los 14 días.
                   </p>
 
                   {enlaceUnico ? (
@@ -387,55 +372,25 @@ export function ShareDialog({
                         </button>
                       </div>
                       <p className="text-xs text-muted">
-                        {nombresDeLaLista.length === 1
-                          ? "Cópialo y mándaselo. No se vuelve a mostrar."
-                          : `Un solo enlace para los ${nombresDeLaLista.length}. Cada quien escoge su nombre y firma una vez.`}
+                        Mándalo a todos. Cada quien escribe su nombre y firma;
+                        se van ocupando los espacios del documento.
                       </p>
                       <button
-                        onClick={() => {
-                          setEnlaceUnico(null);
-                          setListaNombres("");
-                        }}
+                        onClick={() => setEnlaceUnico(null)}
                         className="self-start text-xs font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-ink"
                       >
                         Crear otro enlace
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-2.5">
-                      <textarea
-                        value={listaNombres}
-                        onChange={(e) => setListaNombres(e.target.value)}
-                        rows={4}
-                        placeholder={PLACEHOLDER_LISTA}
-                        className="min-h-[6rem] w-full rounded border border-line-strong bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-seal"
-                      />
-                      <p className="text-xs text-muted">
-                        Escribe un nombre por línea. Sale{" "}
-                        <strong className="font-medium text-ink">
-                          un solo enlace
-                        </strong>{" "}
-                        que puedes mandar al grupo: cada quien escoge su nombre
-                        y firma una vez. Quien no esté en la lista no puede
-                        firmar, aunque le reenvíen el enlace.
-                        {nombresDeLaLista.length > 0 && (
-                          <strong className="font-medium text-ink">
-                            {" "}
-                            {nombresDeLaLista.length} nombre
-                            {nombresDeLaLista.length === 1 ? "" : "s"}.
-                          </strong>
-                        )}
-                      </p>
-
-                      <button
-                        onClick={crearEnlaceUnico}
-                        disabled={pending || nombresDeLaLista.length < 1}
-                        className="inline-flex h-10 items-center justify-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
-                      >
-                        {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
-                        Crear enlace
-                      </button>
-                    </div>
+                    <button
+                      onClick={crearEnlaceUnico}
+                      disabled={pending}
+                      className="inline-flex h-10 items-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
+                    >
+                      {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
+                      Crear enlace
+                    </button>
                   )}
                 </section>
               )}

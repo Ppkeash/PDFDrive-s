@@ -12,6 +12,29 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### El enlace sin cuenta vuelve a ser un solo enlace y ya
+Migración `0019_enlace_abierto_sin_lista.sql`. Deshace la lista de nombres de
+la `0018` como forma normal de usarlo.
+
+La lista resultó demasiado trabajo para quien envía: antes de mandar nada hay
+que escribir los 20 nombres. Para el caso real —un acta que firman los
+asistentes de una reunión— eso sobra.
+
+Ahora es un botón: **Crear enlace**. Se manda al grupo, y cada quien escribe
+su nombre y apellido y firma.
+
+**El tope no lo configura nadie: son los espacios de firma del documento.**
+Si el acta tiene 20 recuadros, firman 20 personas y el enlace se apaga solo.
+Un enlace grupal sin cupos pasa a significar "abierto" — antes se consideraba
+agotado por no tener ningún nombre libre, que era justo al revés.
+
+**El hueco de seguridad es conocido y se acepta a conciencia.** Con el nombre
+libre, nada impide que la misma persona firme dos veces con nombres distintos,
+ni que firme alguien a quien le reenviaron el enlace. Queda el rastro —nombre,
+IP, navegador, hora— y la firma se marca como `enlace`, nunca como `cuenta`.
+`signing_link_slots` sigue en pie para el día que haga falta la variante con
+lista cerrada: el soporte está en la base y en `sign-pdf`, solo sin interfaz.
+
 ### Un solo enlace sin cuenta, en vez de dos
 Compartir ofrecía dos modos —"una persona" y "varias personas"— y eran la
 misma cosa con distinta pinta.

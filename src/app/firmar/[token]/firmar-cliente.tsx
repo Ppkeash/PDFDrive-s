@@ -60,7 +60,8 @@ export function FirmarCliente({
   // Una lista de un solo nombre no es una lista: pedirle a alguien que
   // escoja entre una sola opción es ruido. Se le confirma y ya.
   const unaSolaPersona = datos.kind === "grupal" && cupos.length === 1;
-  const grupal = datos.kind === "grupal" && !unaSolaPersona;
+  // Grupal con lista = se escoge el nombre. Sin lista = se escribe.
+  const grupal = cupos.length > 1;
   const [nombre, setNombre] = useState(
     cupos.length === 1 ? cupos[0].nombre : ""
   );
@@ -226,8 +227,8 @@ export function FirmarCliente({
             ¿Quién va a firmar?
           </h2>
           <p className="mt-1.5 text-sm text-muted">
-            Escribe tu nombre completo. Es el que va a quedar registrado junto a
-            tu firma.
+            Escribe tu nombre y apellido. Es el que va a quedar registrado junto
+            a tu firma.
           </p>
 
           <form

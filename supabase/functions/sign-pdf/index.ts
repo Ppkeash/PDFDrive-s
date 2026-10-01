@@ -86,6 +86,8 @@ function motivoEnlace(motivo: unknown): string {
       return "Ese espacio ya está firmado.";
     case "lista_completa":
       return "Ya firmaron todas las personas de la lista.";
+    case "sin_espacios":
+      return "Ya no quedan espacios para firmar en este documento.";
     case "cupo_tomado":
       return "Alguien acaba de firmar con ese nombre. Elige otro o avisa a quien te envió el enlace.";
     default:
@@ -154,11 +156,13 @@ Deno.serve(async (req) => {
       let cupo: string | null = null;
       let dispositivoRepetido = false;
 
-      if (grupal) {
-        // En un enlace grupal el nombre NO lo escribe quien firma: lo escogió
-        // de la lista que armó quien envió el enlace. Esa es toda la defensa
-        // del enlace grupal -- si el nombre fuera libre, un extraño que lo
-        // reciba reenviado podría inventarse uno.
+      // Un enlace grupal sin lista es abierto: cada quien escribe su nombre y
+      // el tope lo pone el documento, no una lista. Con lista, el nombre no se
+      // escribe -- se escoge, y eso es lo que impide que un extraño se invente
+      // uno.
+      const abierto = Boolean(e.abierto);
+
+      if (grupal && !abierto) {
         if (typeof slotId !== "string" || !slotId)
           return json({ error: "Escoge tu nombre de la lista." }, 400);
 
