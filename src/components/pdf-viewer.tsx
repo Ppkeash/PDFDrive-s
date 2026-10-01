@@ -234,8 +234,16 @@ export function PdfViewer({
     [overrides]
   );
 
+  // La copia local solo manda MIENTRAS se arrastra, para que el recuadro siga
+  // al dedo sin esperar al padre. En cuanto se suelta, manda el padre.
+  //
+  // Antes la copia ganaba siempre, y eso rompía dos cosas: los botones de
+  // tamaño cambiaban el estado del padre y en pantalla no pasaba nada, y al
+  // confirmar se enviaba el valor del padre mientras se veía el de la copia
+  // --quedaba estampada una firma de un tamaño que nadie había visto--.
+  const arrastrandoPending = drag?.id === PENDING;
   const pendingBox = pending
-    ? (overrides[PENDING] ?? pending.box)
+    ? ((arrastrandoPending ? overrides[PENDING] : undefined) ?? pending.box)
     : { x: 0, y: 0, w: 0, h: 0 };
 
   function startDrag(
@@ -299,8 +307,21 @@ export function PdfViewer({
     if (!drag) return;
     const box = overrides[drag.id];
     if (box) {
-      if (drag.id === PENDING) onPendingChange?.(drag.page, box);
-      else onUpdate?.(drag.id, box);
+      if (drag.id === PENDING) {
+        onPendingChange?.(drag.page, box);
+        // Se descarta la copia: el padre ya tiene el valor bueno y dejarla
+        // viva la volvía a aplicar más tarde, deshaciendo lo que se hubiera
+        // cambiado con los botones.
+        setOverrides((o) => {
+          const resto = { ...o };
+          delete resto[PENDING];
+          return resto;
+        });
+      } else {
+        // En un campo guardado la copia se queda hasta que el servidor
+        // responda: es lo que evita que el recuadro salte de vuelta.
+        onUpdate?.(drag.id, box);
+      }
     }
     swallowClick.current = true;
     setDrag(null);
@@ -331,7 +352,6 @@ export function PdfViewer({
         x: clamp(cssX / scale - b.w / 2, 0, info.width - b.w),
         y: clamp(info.height - cssY / scale - b.h / 2, 0, info.height - b.h),
       };
-      setOverrides((o) => ({ ...o, [PENDING]: next }));
       onPendingChange(pageIndex + 1, next);
       return;
     }
