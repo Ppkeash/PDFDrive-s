@@ -12,6 +12,24 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Con alto contraste no se veía la firma al trazarla
+Reportado por alguien firmando de verdad: el recuadro salía negro y el trazo
+no se notaba.
+
+No era el tema oscuro de la aplicación — ese pintaba bien. El fondo blanco del
+pad venía de CSS y la tinta de píxeles de canvas, y ahí está el problema: el
+alto contraste de Windows, el modo oscuro forzado del navegador y las
+extensiones que oscurecen sitios reescriben los colores de CSS **pero no tocan
+lo dibujado en un canvas**. Resultado: fondo invertido a negro, tinta negra
+intacta, nada visible.
+
+Ahora el papel, la pauta y la pista van pintados en un canvas de fondo. Los dos
+corren la misma suerte: si algo invierte la página se invierten ambos y el
+contraste se conserva; si no la invierte, se ven como se diseñaron.
+
+El PNG se sigue exportando del lienzo del trazo y nunca del papel: uno con
+fondo blanco taparía el texto del documento al estamparlo.
+
 ### Cada quien coloca su firma, y el enlace dura 2 horas
 Migración `0020_enlace_con_cupo_y_vencimiento_corto.sql`, cambios en
 `sign-pdf` y en las dos pantallas. Probado contra producción.

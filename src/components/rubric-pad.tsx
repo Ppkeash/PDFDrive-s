@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/spinner";
 import { Eraser, X } from "lucide-react";
 
@@ -11,7 +11,24 @@ import { Eraser, X } from "lucide-react";
  *
  * El trazo se suaviza con curvas cuadráticas entre puntos medios: dibujar con
  * segmentos rectos entre eventos de puntero deja la firma angulosa.
+ *
+ * **El papel se pinta dentro de un canvas, no con CSS.** Reportado por alguien
+ * firmando: con el alto contraste de Windows el recuadro salía negro y la firma
+ * no se veía al trazarla. La causa es que el fondo venía de CSS y la tinta de
+ * píxeles de canvas: el alto contraste, el modo oscuro forzado del navegador y
+ * las extensiones que oscurecen sitios reescriben los colores de CSS pero no
+ * tocan lo dibujado en un canvas. Resultado: fondo invertido a negro, tinta
+ * negra intacta, nada visible.
+ *
+ * Con el papel y la pauta pintados en un canvas de fondo, los dos corren la
+ * misma suerte: si algo invierte la página, se invierten ambos y el contraste
+ * se conserva; si no la invierte, se ven como se diseñaron.
  */
+const TINTA = "#141018";
+const PAPEL = "#ffffff";
+const PAUTA = "#d4d4d4";
+const PISTA = "#a3a3a3";
+
 export function RubricPad({
   open,
   onCancel,
@@ -30,6 +47,7 @@ export function RubricPad({
   busyLabel?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fondoRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
   const lastMid = useRef<{ x: number; y: number } | null>(null);
@@ -41,16 +59,58 @@ export function RubricPad({
   } | null>(null);
   const [hasInk, setHasInk] = useState(false);
 
-  // Preparar el lienzo cada vez que se abre.
+  /** Papel, pauta y, mientras no haya tinta, la pista de qué hacer. */
+  const pintarFondo = useCallback((conPista: boolean) => {
+    const fondo = fondoRef.current;
+    const ctx = fondo?.getContext("2d");
+    if (!fondo || !ctx) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = fondo.width / dpr;
+    const h = fondo.height / dpr;
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = PAPEL;
+    ctx.fillRect(0, 0, w, h);
+
+    // Pauta: dice dónde va la firma sin estorbar el trazo.
+    ctx.strokeStyle = PAUTA;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(32, h - 36);
+    ctx.lineTo(w - 32, h - 36);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (conPista) {
+      ctx.fillStyle = PISTA;
+      ctx.font =
+        '13px var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Traza aquí tu firma", w / 2, h / 2);
+    }
+
+    ctx.restore();
+  }, []);
+
+  // Preparar los dos lienzos cada vez que se abre.
   useEffect(() => {
     if (!open) return;
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const fondo = fondoRef.current;
+    if (!canvas || !fondo) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    for (const c of [canvas, fondo]) {
+      c.width = rect.width * dpr;
+      c.height = rect.height * dpr;
+    }
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -58,11 +118,12 @@ export function RubricPad({
     ctx.lineWidth = 2.2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = "#141018";
+    ctx.strokeStyle = TINTA;
 
+    pintarFondo(true);
     bounds.current = null;
     setHasInk(false);
-  }, [open]);
+  }, [open, pintarFondo]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,10 +162,15 @@ export function RubricPad({
     if (ctx) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 1.1, 0, Math.PI * 2);
-      ctx.fillStyle = "#141018";
+      ctx.fillStyle = TINTA;
       ctx.fill();
     }
-    setHasInk(true);
+
+    if (!hasInk) {
+      // La pista estorba en cuanto hay trazo encima.
+      pintarFondo(false);
+      setHasInk(true);
+    }
   }
 
   function move(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -155,13 +221,19 @@ export function RubricPad({
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
+    pintarFondo(true);
     bounds.current = null;
     lastMid.current = null;
     last.current = null;
     setHasInk(false);
   }
 
-  /** Recorta al área con tinta y exporta PNG transparente. */
+  /**
+   * Recorta al área con tinta y exporta PNG transparente.
+   *
+   * Se exporta el lienzo del trazo, nunca el del papel: un PNG con fondo
+   * blanco taparía el texto del documento al estamparlo.
+   */
   function confirm() {
     const canvas = canvasRef.current;
     const b = bounds.current;
@@ -214,26 +286,28 @@ export function RubricPad({
         <div className="p-5">
           <div
             className="relative rounded border border-line-strong bg-white"
-            // Ademas de bg-white: declarar el esquema de color por elemento
-            // evita que un navegador con "oscurecer sitios web" reinvierta
-            // este recuadro pensando que quedo sin adaptar al modo oscuro.
+            // `bg-white` queda como respaldo para el instante antes de pintar;
+            // el papel de verdad lo pone el canvas de fondo. Declarar el
+            // esquema de color ayuda además con el modo oscuro forzado del
+            // navegador, que de otro modo reinvierte este recuadro.
             style={{ colorScheme: "light" }}
           >
+            {/* Papel y pauta. Va en canvas y no en CSS para que no lo toquen
+                el alto contraste ni las extensiones que oscurecen sitios. */}
+            <canvas
+              ref={fondoRef}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 block h-44 w-full rounded"
+            />
             <canvas
               ref={canvasRef}
               onPointerDown={start}
               onPointerMove={move}
               onPointerUp={end}
               onPointerLeave={end}
-              className="block h-44 w-full touch-none"
+              className="relative block h-44 w-full touch-none"
+              aria-label="Área para trazar la firma"
             />
-            {/* Línea de pauta: indica dónde va la firma sin estorbar. */}
-            <div className="pointer-events-none absolute inset-x-8 bottom-9 border-b border-dashed border-neutral-300" />
-            {!hasInk && (
-              <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-neutral-400">
-                Traza aquí tu firma
-              </p>
-            )}
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-3">
