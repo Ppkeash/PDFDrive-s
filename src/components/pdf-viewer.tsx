@@ -272,20 +272,6 @@ export function PdfViewer({
 
     if (drag.mode === "move") {
       next = { ...b, x: b.x + dx, y: b.y - dy };
-    } else if (drag.id === PENDING) {
-      // Una firma trazada se escala entera, nunca se deforma. Antes el alto y
-      // el ancho se movian por separado: al angostar el recuadro, la imagen se
-      // encajaba dentro conservando su proporcion y quedaba una franja de nada
-      // -- parecia que la firma se hubiera borrado.
-      //
-      // El tirador de la esquina mueve las dos medidas, asi que el factor sale
-      // del promedio de ambas: tirar en diagonal agranda, tirar hacia dentro
-      // encoge, y en los dos casos la firma se mantiene legible.
-      const ratio = b.w / Math.max(b.h, 0.01);
-      const f = ((b.w + dx) / b.w + (b.h + dy) / b.h) / 2;
-      const w = Math.max(MIN_W, Math.min(info.width, b.w * f));
-      const h = Math.max(MIN_H, w / ratio);
-      next = { x: b.x, y: b.y + b.h - h, w, h };
     } else {
       // El tirador está abajo a la derecha en pantalla: al bajarlo crece el
       // alto y el borde inferior (la y del PDF) desciende.
@@ -541,10 +527,11 @@ function Box({
           src={image}
           alt="Tu firma"
           draggable={false}
-          // Sin relleno: `sign-pdf` encaja la rubrica en el recuadro exacto,
-          // asi que un padding aqui mostraba la firma mas pequena de lo que
-          // iba a quedar, y en recuadros chicos se comia casi todo.
-          className="pointer-events-none h-full w-full object-contain"
+          // `object-fill` y sin relleno: el recuadro ES la firma, y al
+          // estamparla llena ese espacio exacto. Con `contain` la vista previa
+          // mentia -- mostraba la firma encajada dentro, mas pequena y
+          // descentrada respecto de lo que iba a quedar en el PDF.
+          className="pointer-events-none h-full w-full object-fill"
         />
       ) : (
         <span

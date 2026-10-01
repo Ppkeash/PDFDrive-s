@@ -358,12 +358,23 @@ export function DocumentWorkspace({
     refresh();
   }
 
-  /** Envía la rúbrica al servidor para estamparla en `fieldId`. */
-  async function sign(fieldId: string | null, png: string) {
+  /**
+   * Envía la rúbrica al servidor para estamparla en `fieldId`.
+   *
+   * `fit` dice si la firma llena el recuadro o se encaja dentro. Llena cuando
+   * quien firma acaba de colocar ese recuadro --ahí el recuadro es la firma--;
+   * se encaja cuando el recuadro lo dejó preparado otra persona, porque
+   * estirarla en un sitio que no eligió la deformaría sin permiso.
+   */
+  async function sign(
+    fieldId: string | null,
+    png: string,
+    fit: "fill" | "contain" = "contain"
+  ) {
     setBusy(true);
     setError(null);
     const { data, error } = await supabase.functions.invoke("sign-pdf", {
-      body: { documentId, fieldId, rubric: png },
+      body: { documentId, fieldId, rubric: png, fit },
     });
     setBusy(false);
 
@@ -520,7 +531,7 @@ export function DocumentWorkspace({
       return false;
     }
 
-    return await sign(created.id, pending.src);
+    return await sign(created.id, pending.src, "fill");
   }
 
   async function runVerify() {

@@ -25,8 +25,18 @@ function json(body: unknown, status = 200) {
   });
 }
 
-/** La URL vive 10 minutos: lo que tarda alguien en firmar, no más. */
-const URL_SEGUNDOS = 600;
+/**
+ * Cuánto vive la URL del PDF.
+ *
+ * Estaba en 10 minutos y resultó muy poco: la pantalla pide el nombre antes de
+ * mostrar el documento, así que entre que alguien abre el enlace, lo deja un
+ * rato y vuelve, la URL ya había caducado -- y el documento salía con "No se
+ * pudo abrir el PDF" sin explicar por qué.
+ *
+ * Dos horas cubre de sobra una reunión, que es el caso real, y no es más
+ * permisivo que el enlace mismo: el enlace también vence a las 2 horas.
+ */
+const URL_SEGUNDOS = 2 * 60 * 60;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });

@@ -163,6 +163,7 @@ export function FirmarCliente({
             deviceId: marcaDelDispositivo(),
             rubric: pendiente.src,
             box: { page: pendiente.page, ...pendiente.box },
+            fit: "fill",
           }),
         }
       );

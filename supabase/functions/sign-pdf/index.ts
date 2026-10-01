@@ -129,6 +129,7 @@ Deno.serve(async (req) => {
       slotId,
       deviceId,
       box,
+      fit,
     } = await req.json();
     if (!seal && !retract && (!rubric || typeof rubric !== "string"))
       return json({ error: "Falta la rúbrica" }, 400);
@@ -630,16 +631,33 @@ Deno.serve(async (req) => {
       // ni línea de pie. Ese rastro (quién, cuándo, IP) ya queda guardado
       // en `signatures`/`audit_log`; estamparlo encima solo ensuciaba la
       // rúbrica visualmente.
-      const fit = Math.min(target.w / png.width, target.h / png.height);
-      const dw = png.width * fit;
-      const dh = png.height * fit;
+      // `fill` cuando quien firma colocó el recuadro: ahí el recuadro ES la
+      // firma, y encajarla dentro conservando proporción dejaba franjas de
+      // nada -- la persona dibujaba un recuadro para una casilla y la firma
+      // salía más pequeña y descentrada.
+      //
+      // `contain` cuando el recuadro lo puso otro de antemano: ahí la firma es
+      // una invitada en un sitio que no eligió, y estirarla para llenarlo la
+      // deformaría sin que nadie lo hubiera pedido.
+      if (fit === "fill") {
+        page.drawImage(png, {
+          x: target.x,
+          y: target.y,
+          width: target.w,
+          height: target.h,
+        });
+      } else {
+        const escala = Math.min(target.w / png.width, target.h / png.height);
+        const dw = png.width * escala;
+        const dh = png.height * escala;
 
-      page.drawImage(png, {
-        x: target.x + (target.w - dw) / 2,
-        y: target.y + (target.h - dh) / 2,
-        width: dw,
-        height: dh,
-      });
+        page.drawImage(png, {
+          x: target.x + (target.w - dw) / 2,
+          y: target.y + (target.h - dh) / 2,
+          width: dw,
+          height: dh,
+        });
+      }
 
       // Se guarda aparte, sin quemar: es lo único que permite reconstruir el
       // PDF sin esta rúbrica si más tarde hay que deshacerla.
