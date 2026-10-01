@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  createSigningLink,
   generateInviteLink,
   removeShare,
   revokeInviteLink,
@@ -47,8 +48,30 @@ export function ShareDialog({
   const [pending, startTransition] = useTransition();
   const [token, setToken] = useState(inviteToken);
   const [copied, setCopied] = useState(false);
+  // Enlace de un solo uso: se muestra una vez, recién creado. No se guarda en
+  // la pantalla porque cada uno sirve para una persona y una sola firma.
+  const [paraQuien, setParaQuien] = useState("");
+  const [enlaceUnico, setEnlaceUnico] = useState<string | null>(null);
+  const [copiadoUnico, setCopiadoUnico] = useState(false);
 
   useEffect(() => setToken(inviteToken), [inviteToken]);
+
+  async function crearEnlaceUnico() {
+    setError(null);
+    startTransition(async () => {
+      const res = await createSigningLink(documentId, null, paraQuien, 14);
+      if (res.error) return setError(res.error);
+      setEnlaceUnico(`${window.location.origin}/firmar/${res.token}`);
+      setCopiadoUnico(false);
+    });
+  }
+
+  async function copiarEnlaceUnico() {
+    if (!enlaceUnico) return;
+    await navigator.clipboard.writeText(enlaceUnico);
+    setCopiadoUnico(true);
+    setTimeout(() => setCopiadoUnico(false), 2000);
+  }
 
   const inviteLink =
     token && typeof window !== "undefined"
@@ -223,6 +246,76 @@ export function ShareDialog({
                     {ROLES.find((r) => r.value === role)?.hint}
                   </p>
                 </form>
+              )}
+
+              {/* Enlace de un solo uso: para quien NO va a crearse cuenta.
+                  Escribe su nombre al abrirlo y firma ahí mismo. Es el caso de
+                  un proveedor o un cliente al que solo hay que pedirle una
+                  firma -- obligarlo a registrarse para eso lo pierde. */}
+              {!compact && (
+                <section className="flex flex-col gap-2 border-t border-line pt-5">
+                  <h3 className="text-micro uppercase text-muted">
+                    Enlace para firmar sin cuenta
+                  </h3>
+                  <p className="text-xs text-muted">
+                    Sirve una sola vez y para una sola persona: la que lo abra
+                    escribe su nombre y firma, sin registrarse. Vence a los 14
+                    días.
+                  </p>
+
+                  {enlaceUnico ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          readOnly
+                          value={enlaceUnico}
+                          onFocus={(e) => e.currentTarget.select()}
+                          className="h-10 min-w-0 flex-1 truncate rounded border border-line-strong bg-surface-2 px-3 text-xs outline-none"
+                        />
+                        <button
+                          onClick={copiarEnlaceUnico}
+                          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded border border-line-strong bg-surface px-3 text-xs font-medium transition-colors hover:bg-surface-2"
+                        >
+                          {copiadoUnico ? (
+                            <Check className="h-3.5 w-3.5 text-ok" />
+                          ) : (
+                            <Link2 className="h-3.5 w-3.5" />
+                          )}
+                          {copiadoUnico ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted">
+                        Cópialo ahora y mándaselo. No se vuelve a mostrar.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setEnlaceUnico(null);
+                          setParaQuien("");
+                        }}
+                        className="self-start text-xs font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-ink"
+                      >
+                        Crear otro para alguien más
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={paraQuien}
+                        onChange={(e) => setParaQuien(e.target.value)}
+                        placeholder="¿Para quién? (opcional)"
+                        className="h-10 min-w-0 flex-1 rounded border border-line-strong bg-surface px-3 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-seal"
+                      />
+                      <button
+                        onClick={crearEnlaceUnico}
+                        disabled={pending}
+                        className="inline-flex h-10 shrink-0 items-center gap-2 rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
+                      >
+                        {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
+                        Crear enlace
+                      </button>
+                    </div>
+                  )}
+                </section>
               )}
 
               {/* Link único: para no invitar de a uno -- se manda una sola vez

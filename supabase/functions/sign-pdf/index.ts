@@ -54,6 +54,37 @@ function decodeDataUrl(dataUrl: string): Uint8Array {
 const sameEmail = (a?: string | null, b?: string | null) =>
   !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/**
+ * Quien firma. Hay dos formas de llegar aquí y no valen lo mismo:
+ * con cuenta de Google (identidad verificada) o con un enlace de un solo uso
+ * (ver migración 0017), donde la credencial es el enlace y el nombre lo
+ * escribe quien lo abre. La diferencia queda grabada en `signer_kind`.
+ */
+type Actor = {
+  userId: string | null;
+  email: string | null;
+  name: string | null;
+  kind: "cuenta" | "enlace";
+  linkId: string | null;
+};
+
+function motivoEnlace(motivo: unknown): string {
+  switch (motivo) {
+    case "ya_usado":
+      return "Este enlace ya se usó para firmar.";
+    case "revocado":
+      return "Este enlace fue desactivado.";
+    case "vencido":
+      return "Este enlace venció.";
+    case "documento_cerrado":
+      return "El documento ya está cerrado.";
+    case "campo_ya_firmado":
+      return "Ese espacio ya está firmado.";
+    default:
+      return "Este enlace no es válido.";
+  }
+}
+
 type Field = {
   id: string;
   page: number;
@@ -68,35 +99,83 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   try {
-    const authHeader = req.headers.get("Authorization") ?? "";
-    if (!authHeader) return json({ error: "Falta Authorization" }, 401);
-
     // `seal` cierra el documento sin estampar nada: es el acto definitivo, y
     // solo lo puede hacer quien manda en el documento (dueño o editor).
     // `retract` quita una rúbrica ya puesta (se firmó mal) para volver a
     // firmar; solo vale mientras el documento siga abierto.
-    const { documentId, fieldId, rubric, seal, retract } = await req.json();
-    if (!documentId) return json({ error: "Falta documentId" }, 400);
+    const { documentId, fieldId, rubric, seal, retract, linkToken, signerName } =
+      await req.json();
     if (!seal && !retract && (!rubric || typeof rubric !== "string"))
       return json({ error: "Falta la rúbrica" }, 400);
 
     const url = Deno.env.get("SUPABASE_URL")!;
     const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(url, service);
 
-    // Cliente con el JWT del usuario → valida identidad y respeta RLS.
-    const asUser = createClient(url, anon, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const {
-      data: { user },
-    } = await asUser.auth.getUser();
-    if (!user) return json({ error: "No autenticado" }, 401);
+    let actor: Actor;
+    let docId: string | null = documentId ?? null;
+    let linkFieldId: string | null = null;
+    // Se conserva para el camino con cuenta: la lectura del documento sigue
+    // pasando por RLS, como antes.
+    let asUser: ReturnType<typeof createClient> | null = null;
 
-    const { data: doc } = await asUser
+    if (typeof linkToken === "string" && linkToken.length > 0) {
+      // Un enlace sirve para una cosa: poner una rúbrica. Ni cerrar el
+      // documento ni deshacer la firma de nadie.
+      if (seal || retract)
+        return json({ error: "Este enlace solo sirve para firmar." }, 403);
+
+      const nombre = typeof signerName === "string" ? signerName.trim() : "";
+      if (nombre.length < 3)
+        return json({ error: "Escribe tu nombre completo para firmar." }, 400);
+      if (nombre.length > 120)
+        return json({ error: "Ese nombre es demasiado largo." }, 400);
+
+      const { data: estado } = await admin.rpc("estado_enlace_de_firma", {
+        p_token: linkToken,
+      });
+      const e = estado as Record<string, unknown> | null;
+      if (!e?.ok) return json({ error: motivoEnlace(e?.motivo) }, 403);
+
+      // El documento lo manda el enlace, nunca el cliente: si no, cualquiera
+      // con un enlace válido firmaría en un documento ajeno.
+      docId = e.document_id as string;
+      linkFieldId = (e.field_id as string | null) ?? null;
+      actor = {
+        userId: null,
+        email: null,
+        name: nombre,
+        kind: "enlace",
+        linkId: e.link_id as string,
+      };
+    } else {
+      const authHeader = req.headers.get("Authorization") ?? "";
+      if (!authHeader) return json({ error: "Falta Authorization" }, 401);
+      if (!docId) return json({ error: "Falta documentId" }, 400);
+
+      // Cliente con el JWT del usuario → valida identidad y respeta RLS.
+      asUser = createClient(url, anon, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const {
+        data: { user },
+      } = await asUser.auth.getUser();
+      if (!user) return json({ error: "No autenticado" }, 401);
+
+      actor = {
+        userId: user.id,
+        email: user.email ?? null,
+        name: null,
+        kind: "cuenta",
+        linkId: null,
+      };
+    }
+
+    const { data: doc } = await (asUser ?? admin)
       .from("documents")
       .select("id, owner_id, name, mime, status, storage_path, signed_path")
-      .eq("id", documentId)
+      .eq("id", docId as string)
       .maybeSingle();
     if (!doc) return json({ error: "Documento no encontrado o sin acceso" }, 404);
     if (doc.mime !== "application/pdf")
@@ -107,19 +186,21 @@ Deno.serve(async (req) => {
         409
       );
 
-    const isOwner = doc.owner_id === user.id;
-    const admin = createClient(url, service);
+    const isOwner = actor.userId !== null && doc.owner_id === actor.userId;
 
     // ---- Permiso ---------------------------------------------------------
     // La RLS ya bloquea al lector, pero el error que devolvería sería opaco.
     // Aquí se decide explícitamente y con un mensaje que se entiende.
     let role = "propietario";
-    if (!isOwner) {
+    if (actor.kind === "enlace") {
+      // El enlace ya fue validado contra la base: concede firmar, nada más.
+      role = "firmante";
+    } else if (!isOwner) {
       const { data: share } = await admin
         .from("document_shares")
         .select("role")
         .eq("document_id", doc.id)
-        .eq("user_id", user.id)
+        .eq("user_id", actor.userId as string)
         .maybeSingle();
       role = share?.role ?? "";
       if (!role) return json({ error: "No tienes acceso a este documento" }, 403);
@@ -159,11 +240,13 @@ Deno.serve(async (req) => {
     if (retract) {
       const target = fieldId
         ? (existing ?? []).find((s) => s.field_id === fieldId)
-        : (existing ?? []).find((s) => !s.field_id && s.signer_id === user.id);
+        : (existing ?? []).find(
+            (s) => !s.field_id && s.signer_id === actor.userId
+          );
       if (!target)
         return json({ error: "No hay ninguna firma que deshacer ahí." }, 404);
 
-      const canRetract = target.signer_id === user.id || canEditFields;
+      const canRetract = target.signer_id === actor.userId || canEditFields;
       if (!canRetract)
         return json(
           { error: "No puedes deshacer la firma de otra persona." },
@@ -277,7 +360,7 @@ Deno.serve(async (req) => {
         req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
       await admin.from("audit_log").insert({
         document_id: doc.id,
-        actor_id: user.id,
+        actor_id: actor.userId,
         action: "deshacer_firma",
         ip,
         metadata: {
@@ -318,6 +401,26 @@ Deno.serve(async (req) => {
         );
       if ((existing ?? []).length === 0)
         return json({ error: "El documento no tiene ninguna firma." }, 409);
+    } else if (actor.kind === "enlace") {
+      // El campo lo fija quien creó el enlace, no quien lo abre.
+      if (linkFieldId) {
+        field = fields.find((f) => f.id === linkFieldId) ?? null;
+        if (!field)
+          return json({ error: "Ese espacio ya no existe en el documento." }, 409);
+        if (signedFieldIds.has(field.id))
+          return json({ error: "Ese espacio ya está firmado." }, 409);
+      } else if (fields.length > 0) {
+        // Enlace sin campo: el primero libre y sin dueño asignado. Nunca uno
+        // asignado a un correo -- esa firma le corresponde a esa persona.
+        field =
+          fields.find((f) => !signedFieldIds.has(f.id) && !f.assigned_email) ??
+          null;
+        if (!field)
+          return json(
+            { error: "No queda ningún espacio libre para firmar." },
+            409
+          );
+      }
     } else if (fields.length > 0) {
       if (fieldId) {
         field = fields.find((f) => f.id === fieldId) ?? null;
@@ -328,7 +431,8 @@ Deno.serve(async (req) => {
         field =
           fields.find(
             (f) =>
-              !signedFieldIds.has(f.id) && sameEmail(f.assigned_email, user.email)
+              !signedFieldIds.has(f.id) &&
+              sameEmail(f.assigned_email, actor.email)
           ) ??
           (canEditFields
             ? fields.find(
@@ -348,7 +452,7 @@ Deno.serve(async (req) => {
       // Un campo asignado solo lo firma su destinatario. Dueño y editor pueden
       // cubrir los que quedaron sin asignar, pero no suplantar a nadie.
       const allowed = field.assigned_email
-        ? sameEmail(field.assigned_email, user.email)
+        ? sameEmail(field.assigned_email, actor.email)
         : canEditFields;
       if (!allowed)
         return json(
@@ -362,7 +466,7 @@ Deno.serve(async (req) => {
           { error: "El dueño todavía no te ha asignado un campo de firma." },
           403
         );
-      if ((existing ?? []).some((s) => s.signer_id === user.id))
+      if ((existing ?? []).some((s) => s.signer_id === actor.userId))
         return json({ error: "Ya firmaste este documento." }, 409);
     }
 
@@ -456,8 +560,8 @@ Deno.serve(async (req) => {
         reason: `Firmado en FirmaDrive por ${
           (existing ?? []).length + (seal ? 0 : 1)
         } firmante(s)`,
-        contactInfo: user.email ?? "",
-        name: user.email ?? "Firmante",
+        contactInfo: actor.email ?? "",
+        name: actor.email ?? actor.name ?? "Firmante",
         location: "FirmaDrive",
       });
 
@@ -489,6 +593,9 @@ Deno.serve(async (req) => {
 
     const ip =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    // Para una firma por enlace, IP y navegador son casi todo el rastro que
+    // queda de quién estuvo ahí: no hay cuenta detrás.
+    const userAgent = req.headers.get("user-agent")?.slice(0, 400) ?? null;
 
     if (seal) {
       // Cerrar no añade una firma nueva: acredita las que ya estaban.
@@ -502,14 +609,37 @@ Deno.serve(async (req) => {
         id: sigId,
         document_id: doc.id,
         field_id: field?.id ?? null,
-        signer_id: user.id,
+        signer_id: actor.userId,
+        signer_name: actor.name,
+        signer_kind: actor.kind,
+        signer_user_agent: userAgent,
         signed_at: stamped.toISOString(),
         ip,
         cert_subject: complete ? "CN=FirmaDrive Dev Signer" : null,
         tsa_token: null,
         rubric_path: rubricPath,
       });
-      if (sigErr) console.error("signatures.insert:", sigErr);
+      if (sigErr) {
+        console.error("signatures.insert:", sigErr);
+        return json({ error: "No se pudo registrar la firma." }, 500);
+      }
+
+      // El enlace se quema aquí, no antes: si el estampado falla, el enlace
+      // sigue sirviendo y la persona puede reintentar.
+      if (actor.kind === "enlace" && actor.linkId) {
+        const { error: linkErr } = await admin
+          .from("signing_links")
+          .update({
+            used_at: new Date().toISOString(),
+            signer_name: actor.name,
+            signer_ip: ip,
+            signer_user_agent: userAgent,
+            signature_id: sigId,
+          })
+          .eq("id", actor.linkId)
+          .is("used_at", null);
+        if (linkErr) console.error("signing_links.update:", linkErr);
+      }
     }
 
     const { error: updErr } = await admin
@@ -524,11 +654,14 @@ Deno.serve(async (req) => {
 
     await admin.from("audit_log").insert({
       document_id: doc.id,
-      actor_id: user.id,
+      actor_id: actor.userId,
       action: seal ? "cerrar_y_sellar" : complete ? "firmar_y_sellar" : "firmar",
       ip,
       metadata: {
-        email: user.email,
+        email: actor.email,
+        signer_name: actor.name,
+        signer_kind: actor.kind,
+        user_agent: userAgent,
         field_id: field?.id ?? null,
         input_hash: inputHash,
         output_hash: outHash,

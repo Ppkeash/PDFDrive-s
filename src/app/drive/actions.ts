@@ -232,3 +232,59 @@ export async function revokeInviteLink(documentId: string) {
   revalidatePath(`/doc/${documentId}`);
   return {};
 }
+
+/**
+ * Crea un enlace de firma de un solo uso (ver migración 0017).
+ *
+ * Distinto del link de invitación de arriba: aquel invita a la aplicación y
+ * exige entrar con Google; este deja firmar sin cuenta, una sola vez. Sirve
+ * para mandarle un acta a alguien de fuera que no se va a registrar para
+ * firmar una vez.
+ *
+ * El enlace es la credencial, así que se devuelve una vez y la RLS impide que
+ * nadie que no pueda editar el documento lo cree o lo lea.
+ */
+export async function createSigningLink(
+  documentId: string,
+  fieldId: string | null,
+  label: string | null,
+  diasDeVigencia = 14
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado" };
+
+  const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
+  const expires = new Date(
+    Date.now() + Math.max(1, diasDeVigencia) * 86_400_000
+  ).toISOString();
+
+  const { error } = await supabase.from("signing_links").insert({
+    document_id: documentId,
+    field_id: fieldId,
+    token,
+    label: label?.trim() || null,
+    created_by: user.id,
+    expires_at: expires,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/doc/${documentId}`);
+  return { token };
+}
+
+/** Da de baja un enlace que todavía no se usó. */
+export async function revokeSigningLink(documentId: string, linkId: string) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("signing_links")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("id", linkId)
+    .is("used_at", null);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/doc/${documentId}`);
+  return {};
+}

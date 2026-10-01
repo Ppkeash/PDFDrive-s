@@ -10,6 +10,49 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+## 2026-10-01
+
+### Enlace para firmar sin cuenta
+Migración `0017_enlaces_de_firma.sql`, edge function `open-signing-link`,
+cambios en `sign-pdf` y pantalla pública `/firmar/[token]`. Probado de punta a
+punta contra producción.
+
+El link de `0006` invita a la aplicación: quien lo abre tiene que entrar con
+Google y queda como firmante. Eso no sirve para mandarle un acta a alguien de
+fuera, que no va a crearse una cuenta para firmar una sola vez.
+
+Este enlace es otra cosa. Un solo uso, apunta a un espacio concreto del
+documento, y quien lo abre **escribe su nombre y firma sin registrarse**.
+
+- Tres pasos, en ese orden a propósito: primero el nombre, después leer el
+  documento, la rúbrica de última. Pedir el nombre al final, con la firma ya
+  trazada, invita a escribir cualquier cosa para salir del paso.
+- El enlace se quema **después** de que la firma queda guardada, no antes: si
+  el estampado falla, el enlace sigue sirviendo y la persona reintenta.
+- El documento lo manda el enlace, nunca el cliente. Si no, cualquiera con un
+  enlace válido firmaría en un documento ajeno.
+- Un enlace solo firma: no cierra el documento ni deshace la firma de nadie.
+- Un enlace sin campo asignado toma el primer espacio libre **sin dueño**.
+  Nunca uno asignado a un correo — esa firma le corresponde a esa persona.
+
+**Lo que esto vale, dicho claro:** el enlace es la credencial, así que quien lo
+tenga puede firmar poniendo el nombre que quiera. Por eso se guarda todo lo que
+identifica el acto — nombre escrito, IP, navegador, hora — y la firma queda
+marcada como `enlace` y no como `cuenta`. Una firma con cuenta vale más y tiene
+que notarse al revisar el documento.
+
+`/firmar` queda exenta de la puerta de la Fase A: un enlace de firma se manda
+justamente a gente de fuera, y si la puerta se enciende algún día esto tiene
+que seguir abriendo.
+
+### Revisión del proyecto antes de abrirlo a gente real
+Sin cambios de código. Se revisaron datos y esquema en producción buscando
+inconsistencias: no hay documentos cerrados sin PDF sellado ni sin hash,
+ninguno sin espacio de trabajo, ningún campo asignado a un correo sin acceso, y
+ningún correo en la cola fallido. Aparecen 3 firmas sin campo — resto del fallo
+de borrado que cerró la `0010` — y 3 invitaciones por correo todavía sin
+cuenta, que es lo esperado.
+
 ### El login mostraba un formulario que no podía funcionar
 Visto al revisar la aplicación desplegada en un navegador, antes de invitar a
 nadie al piloto.

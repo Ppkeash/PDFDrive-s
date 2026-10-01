@@ -16,6 +16,12 @@ import {
 // que no indexen nada. Taparlo con un 404 sería contraproducente.
 const GATE_EXEMPT = new Set(["/robots.txt"]);
 
+// Los enlaces de firma se mandan a gente de fuera -- un proveedor, un cliente,
+// alguien que no trabaja aquí. Si la puerta se enciende, esto tiene que seguir
+// abriendo o el enlace deja de servir para lo único que sirve. El token es su
+// propia credencial, así que no se está abriendo nada más.
+const GATE_EXEMPT_PREFIX = ["/firmar/"];
+
 /** 404 seco: ni marca, ni pista de que aquí haya una aplicación. */
 function notFound(): NextResponse {
   return new NextResponse(null, { status: 404 });
@@ -26,7 +32,11 @@ export async function middleware(request: NextRequest) {
 
   // Se resuelven antes que nada: `updateSession` protege rutas privadas y
   // mandaría `robots.txt` a /login, que es justo lo contrario de lo buscado.
-  if (GATE_EXEMPT.has(path)) return NextResponse.next({ request });
+  if (
+    GATE_EXEMPT.has(path) ||
+    GATE_EXEMPT_PREFIX.some((p) => path.startsWith(p))
+  )
+    return NextResponse.next({ request });
 
   if (gateEnabled()) {
     // Canje de la frase por cookie: se redirige a la misma URL sin el
