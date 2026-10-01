@@ -12,6 +12,33 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Tras arrastrar la firma, los botones de tamaño dejaban de servir
+Reportado al probarlo: *"ni siquiera los botones sirven"*. Cierto, y el fallo
+era más feo de lo que se veía.
+
+El visor guarda una copia local del recuadro mientras se arrastra, para que
+siga al dedo sin esperar al componente padre. El problema: esa copia **ganaba
+siempre**, no solo durante el arrastre. Así que en cuanto alguien movía la
+firma una vez, los botones cambiaban el estado real y en pantalla no pasaba
+nada.
+
+Reproducido en el navegador con un arrastre de mouse real: el recuadro se
+quedaba clavado en 402 px por más que se pulsara.
+
+Y había algo peor, invisible: al confirmar se enviaba el recuadro del padre
+mientras la pantalla mostraba el de la copia. Quedaba estampada **una firma de
+un tamaño que nadie había visto**. El arrastre incluso devolvía la firma a un
+tamaño anterior.
+
+Ahora la copia solo manda mientras se arrastra, y se descarta al soltar. En un
+campo ya guardado se conserva hasta que responda el servidor, que es lo que
+evita que el recuadro salte de vuelta.
+
+Comprobado de punta a punta: tras arrastrar, 342 → 403 → 455 px con el botón
+de más, y hasta 124×23 con ocho toques del de menos, conservando la proporción
+(5.39 contra 5.43 inicial). Lo que se veía en pantalla —109 × 19.9 puntos— es
+exactamente lo que quedó guardado.
+
 ### Los botones de tamaño faltaban donde más se usan
 Los botones de − y + del cambio anterior quedaron solo en la pantalla del
 enlace público. Quien firma con su cuenta, dentro de la aplicación, no veía
