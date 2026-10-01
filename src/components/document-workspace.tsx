@@ -476,14 +476,16 @@ export function DocumentWorkspace({
     });
 
     const page = pageSizes.current[0] ?? { width: 595, height: 842 };
+
+    // Cabe en la hoja: en un PDF angosto la firma nacía más ancha que la
+    // página y se salía por el borde.
+    const w = Math.min(size.w, page.width * 0.8);
+    const h = size.h * (w / size.w);
+
     setPending({
       src: png,
       page: 1,
-      box: {
-        ...size,
-        x: (page.width - size.w) / 2,
-        y: page.height * 0.35,
-      },
+      box: { w, h, x: (page.width - w) / 2, y: page.height * 0.35 },
     });
     setPadOpen(false);
   }

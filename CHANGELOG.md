@@ -12,6 +12,31 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### El invitado no podía ver el PDF, y la firma no encajaba
+Dos fallos distintos que salieron de la misma prueba: abrir el enlace como
+alguien de fuera.
+
+**El PDF no abría.** La URL del archivo se generaba al abrir la página y
+duraba 10 minutos, pero la pantalla pide el nombre antes de mostrar el
+documento. Quien abre el enlace, lo deja un rato y vuelve, se encontraba con
+"No se pudo abrir el PDF" sin ninguna explicación. Ahora dura 2 horas, lo mismo
+que el enlace.
+
+**La firma se encajaba dentro del recuadro en vez de llenarlo.** Quien firma
+dibuja un recuadro del tamaño de la casilla y espera que la firma lo ocupe; con
+el encaje proporcional salía más pequeña y descentrada. Ahora llena el recuadro
+exacto, y el tirador de la esquina vuelve a mover ancho y alto por separado —
+que es lo que hace falta para cuadrarla en una casilla. Los botones de más y
+menos siguen escalando sin deformar.
+
+Solo llena cuando quien firma colocó el recuadro. Si lo dejó preparado otra
+persona, la firma se sigue encajando dentro: ahí es una invitada en un sitio
+que no eligió, y estirarla la deformaría sin que nadie lo hubiera pedido.
+
+**Y un tercero, encontrado al verificar:** en un PDF angosto la firma nacía más
+ancha que la página, se salía por el borde y no había forma de colocarla. Ahora
+el tamaño inicial se limita al 80% del ancho de la hoja.
+
 ### Tras arrastrar la firma, los botones de tamaño dejaban de servir
 Reportado al probarlo: *"ni siquiera los botones sirven"*. Cierto, y el fallo
 era más feo de lo que se veía.

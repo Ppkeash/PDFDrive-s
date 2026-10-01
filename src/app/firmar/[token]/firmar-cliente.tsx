@@ -113,9 +113,17 @@ export function FirmarCliente({
     });
 
     const pagina = tamanos.current[0] ?? { width: 595, height: 842 };
+
+    // Cabe en la hoja: en un PDF angosto la firma nacía más ancha que la
+    // página, se salía por el borde y no había forma de colocarla.
+    const maxW = pagina.width * 0.8;
+    const w = Math.min(size.w, maxW);
+    const h = size.h * (w / size.w);
+
     return {
-      ...size,
-      x: (pagina.width - size.w) / 2,
+      w,
+      h,
+      x: (pagina.width - w) / 2,
       y: pagina.height * 0.3,
     };
   }
