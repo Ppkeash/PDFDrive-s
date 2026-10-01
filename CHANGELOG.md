@@ -12,6 +12,30 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Los dos tipos de enlace no se distinguían
+Pregunta de alguien usándolo: *¿el enlace es para una persona o es grupal?*
+Buena señal de que la pantalla no lo decía.
+
+Compartir ofrece dos enlaces y hasta ahora se veían casi iguales, uno debajo
+del otro, sin decir para quién servía cada uno. La única forma de saber cuál
+era cuál era probarlos.
+
+No son intercambiables:
+
+- **Link del equipo** — varias personas, para gente de la empresa. Quien lo
+  abre entra con su cuenta de Google y queda como firmante.
+- **Enlace sin cuenta** — una persona, un uso, para alguien de fuera que solo
+  firma esta vez y no se va a registrar.
+
+Ahora cada uno lleva en su primera línea para quién es, y una etiqueta al lado
+del título que lo resume de un vistazo: *varias personas* contra *1 persona ·
+1 uso*. El del equipo va primero, porque es el caso normal.
+
+No se agregó ningún enlace grupal sin cuenta, y es a propósito: sin cuentas
+nada impide que la misma persona firme dos veces con nombres distintos, ni que
+alguien firme en el lugar de otro. El enlace grupal exige cuenta justamente
+por eso.
+
 ### La prueba gratuita no se veía por ningún lado
 Reportado al usarlo de verdad: alguien entra, se le concede la prueba de 14
 días, y **nada en la pantalla se lo dice**.

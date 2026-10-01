@@ -248,19 +248,106 @@ export function ShareDialog({
                 </form>
               )}
 
+              {/* Link único: para no invitar de a uno -- se manda una sola vez
+                  por el canal que sea (WhatsApp, correo) y sirve para varios
+                  firmantes. Deja de funcionar solo cuando el documento se
+                  cierra, o antes si se revoca a mano. */}
+              {!compact && (
+                <section className="flex flex-col gap-2 border-t border-line pt-5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-micro uppercase text-muted">
+                      Link del equipo
+                    </h3>
+                    <span className="text-micro uppercase text-ok">
+                      varias personas
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted">
+                    <strong className="font-medium text-ink">
+                      Para gente de la empresa
+                    </strong>
+                    : un solo enlace que sirve para todos. Quien lo abre{" "}
+                    <strong className="font-medium text-ink">
+                      entra con su cuenta de Google
+                    </strong>{" "}
+                    y queda como firmante. Sirve hasta que cierres el documento.
+                  </p>
+
+                  {inviteLink ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          readOnly
+                          value={inviteLink}
+                          onFocus={(e) => e.currentTarget.select()}
+                          className="h-10 min-w-0 flex-1 truncate rounded border border-line-strong bg-surface-2 px-3 text-xs outline-none"
+                        />
+                        <button
+                          onClick={copyLink}
+                          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded border border-line-strong bg-surface px-3 text-xs font-medium transition-colors hover:bg-surface-2"
+                        >
+                          {copied ? (
+                            <Check className="h-3.5 w-3.5 text-ok" />
+                          ) : (
+                            <Link2 className="h-3.5 w-3.5" />
+                          )}
+                          {copied ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                      <div className="flex gap-3 text-xs">
+                        <button
+                          onClick={makeLink}
+                          disabled={pending}
+                          className="font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-ink disabled:opacity-50"
+                        >
+                          Generar uno nuevo
+                        </button>
+                        <button
+                          onClick={revokeLink}
+                          disabled={pending}
+                          className="font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-danger disabled:opacity-50"
+                        >
+                          Desactivar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={makeLink}
+                      disabled={pending}
+                      className="inline-flex h-10 items-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
+                    >
+                      {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
+                      Generar link
+                    </button>
+                  )}
+                </section>
+              )}
+
               {/* Enlace de un solo uso: para quien NO va a crearse cuenta.
                   Escribe su nombre al abrirlo y firma ahí mismo. Es el caso de
                   un proveedor o un cliente al que solo hay que pedirle una
                   firma -- obligarlo a registrarse para eso lo pierde. */}
               {!compact && (
                 <section className="flex flex-col gap-2 border-t border-line pt-5">
-                  <h3 className="text-micro uppercase text-muted">
-                    Enlace para firmar sin cuenta
-                  </h3>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-micro uppercase text-muted">
+                      Enlace sin cuenta
+                    </h3>
+                    <span className="text-micro uppercase text-wait">
+                      1 persona · 1 uso
+                    </span>
+                  </div>
                   <p className="text-xs text-muted">
-                    Sirve una sola vez y para una sola persona: la que lo abra
-                    escribe su nombre y firma, sin registrarse. Vence a los 14
-                    días.
+                    <strong className="font-medium text-ink">
+                      Para alguien de fuera
+                    </strong>{" "}
+                    que solo firma esta vez: un proveedor, un cliente. Abre el
+                    enlace, escribe su nombre y firma —{" "}
+                    <strong className="font-medium text-ink">
+                      sin registrarse
+                    </strong>
+                    . Hay que mandar uno por persona. Vence a los 14 días.
                   </p>
 
                   {enlaceUnico ? (
@@ -314,71 +401,6 @@ export function ShareDialog({
                         Crear enlace
                       </button>
                     </div>
-                  )}
-                </section>
-              )}
-
-              {/* Link único: para no invitar de a uno -- se manda una sola vez
-                  por el canal que sea (WhatsApp, correo) y sirve para varios
-                  firmantes. Deja de funcionar solo cuando el documento se
-                  cierra, o antes si se revoca a mano. */}
-              {!compact && (
-                <section className="flex flex-col gap-2 border-t border-line pt-5">
-                  <h3 className="text-micro uppercase text-muted">
-                    Link de invitación
-                  </h3>
-                  <p className="text-xs text-muted">
-                    Un solo enlace para todos: quien lo abre entra como
-                    firmante. Sirve hasta que cierres el documento.
-                  </p>
-
-                  {inviteLink ? (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <input
-                          readOnly
-                          value={inviteLink}
-                          onFocus={(e) => e.currentTarget.select()}
-                          className="h-10 min-w-0 flex-1 truncate rounded border border-line-strong bg-surface-2 px-3 text-xs outline-none"
-                        />
-                        <button
-                          onClick={copyLink}
-                          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded border border-line-strong bg-surface px-3 text-xs font-medium transition-colors hover:bg-surface-2"
-                        >
-                          {copied ? (
-                            <Check className="h-3.5 w-3.5 text-ok" />
-                          ) : (
-                            <Link2 className="h-3.5 w-3.5" />
-                          )}
-                          {copied ? "Copiado" : "Copiar"}
-                        </button>
-                      </div>
-                      <div className="flex gap-3 text-xs">
-                        <button
-                          onClick={makeLink}
-                          disabled={pending}
-                          className="font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-ink disabled:opacity-50"
-                        >
-                          Generar uno nuevo
-                        </button>
-                        <button
-                          onClick={revokeLink}
-                          disabled={pending}
-                          className="font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-danger disabled:opacity-50"
-                        >
-                          Desactivar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={makeLink}
-                      disabled={pending}
-                      className="inline-flex h-10 items-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
-                    >
-                      {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
-                      Generar link
-                    </button>
                   )}
                 </section>
               )}
