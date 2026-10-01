@@ -56,9 +56,17 @@ export function FirmarCliente({
   token: string;
   datos: DatosDelEnlace;
 }) {
-  const grupal = datos.kind === "grupal";
-  const [nombre, setNombre] = useState("");
-  const [cupoElegido, setCupoElegido] = useState<string | null>(null);
+  const cupos = datos.cupos ?? [];
+  // Una lista de un solo nombre no es una lista: pedirle a alguien que
+  // escoja entre una sola opción es ruido. Se le confirma y ya.
+  const unaSolaPersona = datos.kind === "grupal" && cupos.length === 1;
+  const grupal = datos.kind === "grupal" && !unaSolaPersona;
+  const [nombre, setNombre] = useState(
+    cupos.length === 1 ? cupos[0].nombre : ""
+  );
+  const [cupoElegido, setCupoElegido] = useState<string | null>(
+    cupos.length === 1 ? cupos[0].id : null
+  );
   const [identificado, setIdentificado] = useState(false);
   const [padAbierto, setPadAbierto] = useState(false);
   const [firmando, setFirmando] = useState(false);
@@ -150,7 +158,7 @@ export function FirmarCliente({
           </p>
 
           <ul className="mt-5 flex flex-col gap-1.5">
-            {(datos.cupos ?? []).map((c) => {
+            {cupos.map((c) => {
               const elegido = cupoElegido === c.id;
               return (
                 <li key={c.id}>
@@ -193,6 +201,24 @@ export function FirmarCliente({
             ¿No está tu nombre? Avísale a quien te envió el enlace — solo esa
             persona puede agregarlo.
           </p>
+        </section>
+      ) : !identificado && unaSolaPersona ? (
+        <section className="mt-8 rounded-lg border border-line bg-surface p-6">
+          <h2 className="font-display text-lg font-semibold">
+            Este documento es para ti
+          </h2>
+          <p className="mt-1.5 text-sm text-muted">
+            Quien te lo envió preparó la firma a nombre de{" "}
+            <strong className="font-medium text-ink">{cupos[0].nombre}</strong>.
+            Si no eres tú, avísale antes de continuar.
+          </p>
+
+          <button
+            onClick={() => setIdentificado(true)}
+            className="mt-5 inline-flex h-11 w-full items-center justify-center rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90"
+          >
+            Sí, soy yo — ver el documento
+          </button>
         </section>
       ) : !identificado ? (
         <section className="mt-8 rounded-lg border border-line bg-surface p-6">

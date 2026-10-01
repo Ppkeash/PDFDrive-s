@@ -12,6 +12,34 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Un solo enlace sin cuenta, en vez de dos
+Compartir ofrecía dos modos —"una persona" y "varias personas"— y eran la
+misma cosa con distinta pinta.
+
+En el modo de una persona el campo decía *"¿Para quién? (opcional)"*: ya se
+escribía un nombre, pero era solo una etiqueta y no ataba nada; cualquiera que
+recibiera el enlace reenviado podía firmar con el nombre que quisiera. En el
+modo de lista, ese mismo nombre era el cupo y sí ataba.
+
+Ahora hay **un solo cuadro de nombres**. Un nombre da un enlace para esa
+persona; veinte nombres dan un enlace para los veinte. **El número de usos es
+la cantidad de nombres** — no hace falta una perilla aparte, y poner una
+hubiera sido el botón equivocado: lo que hace seguro al enlace no es cuántas
+veces se puede usar, sino que cada uso esté atado a un nombre escogido de
+antemano.
+
+El efecto secundario importa más que la simplificación: **ya no existe la
+firma anónima de nombre libre**. Toda firma sin cuenta queda atada a un nombre
+que escogió quien envió el documento.
+
+Cuando la lista tiene un solo nombre, la pantalla no muestra una lista de uno
+—pedirle a alguien que escoja entre una sola opción es ruido— sino una
+confirmación: *"Quien te lo envió preparó la firma a nombre de X. Si no eres
+tú, avísale antes de continuar."*
+
+Si no se sabe el nombre exacto, sirve el cargo: "Representante de Acme" ata el
+cupo igual.
+
 ### Enlace grupal con lista de nombres
 Migración `0018_enlace_grupal_con_lista.sql`, cambios en `sign-pdf` y
 `open-signing-link`, y el formulario de Compartir. Probado contra producción.

@@ -233,48 +233,6 @@ export async function revokeInviteLink(documentId: string) {
   return {};
 }
 
-/**
- * Crea un enlace de firma de un solo uso (ver migración 0017).
- *
- * Distinto del link de invitación de arriba: aquel invita a la aplicación y
- * exige entrar con Google; este deja firmar sin cuenta, una sola vez. Sirve
- * para mandarle un acta a alguien de fuera que no se va a registrar para
- * firmar una vez.
- *
- * El enlace es la credencial, así que se devuelve una vez y la RLS impide que
- * nadie que no pueda editar el documento lo cree o lo lea.
- */
-export async function createSigningLink(
-  documentId: string,
-  fieldId: string | null,
-  label: string | null,
-  diasDeVigencia = 14
-) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "No autenticado" };
-
-  const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
-  const expires = new Date(
-    Date.now() + Math.max(1, diasDeVigencia) * 86_400_000
-  ).toISOString();
-
-  const { error } = await supabase.from("signing_links").insert({
-    document_id: documentId,
-    field_id: fieldId,
-    token,
-    label: label?.trim() || null,
-    created_by: user.id,
-    expires_at: expires,
-  });
-  if (error) return { error: error.message };
-
-  revalidatePath(`/doc/${documentId}`);
-  return { token };
-}
-
 /** Da de baja un enlace que todavía no se usó. */
 export async function revokeSigningLink(documentId: string, linkId: string) {
   const supabase = createClient();
@@ -290,7 +248,8 @@ export async function revokeSigningLink(documentId: string, linkId: string) {
 }
 
 /**
- * Enlace grupal con lista de nombres (ver migración 0018).
+ * Enlace para firmar sin cuenta, con su lista de nombres (migraciones
+ * 0017 y 0018).
  *
  * El caso que lo pide: un acta que firman 20 personas que no usan la
  * aplicación. Mandar 20 enlaces distintos no lo hace nadie.
@@ -325,8 +284,8 @@ export async function createGroupSigningLink(
     limpios.push(nombre.slice(0, 120));
   }
 
-  if (limpios.length < 2)
-    return { error: "Escribe al menos dos nombres, uno por línea." };
+  if (limpios.length < 1)
+    return { error: "Escribe al menos un nombre." };
   if (limpios.length > 100)
     return { error: "Son demasiados nombres para un solo enlace (máximo 100)." };
 

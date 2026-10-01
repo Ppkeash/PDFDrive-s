@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createGroupSigningLink,
-  createSigningLink,
   generateInviteLink,
   removeShare,
   revokeInviteLink,
@@ -24,7 +23,8 @@ export type ShareRow = {
 };
 
 /** Ejemplo del cuadro de nombres. Fuera del JSX por los saltos de línea. */
-const PLACEHOLDER_LISTA = "Un nombre por línea:\nJuan Pérez\nMaría Gómez\nPedro Ruiz";
+const PLACEHOLDER_LISTA =
+  "¿Quiénes van a firmar? Uno por línea:\nJuan Pérez\nMaría Gómez\nRepresentante de Acme";
 
 export function ShareDialog({
   documentId,
@@ -54,10 +54,6 @@ export function ShareDialog({
   const [copied, setCopied] = useState(false);
   // Enlace de un solo uso: se muestra una vez, recién creado. No se guarda en
   // la pantalla porque cada uno sirve para una persona y una sola firma.
-  const [paraQuien, setParaQuien] = useState("");
-  // Una persona o una lista. Son el mismo enlace por dentro, pero el riesgo
-  // es distinto: el de lista solo deja firmar a quien esté en ella.
-  const [modoLista, setModoLista] = useState(false);
   const [listaNombres, setListaNombres] = useState("");
   const [enlaceUnico, setEnlaceUnico] = useState<string | null>(null);
   const [copiadoUnico, setCopiadoUnico] = useState(false);
@@ -72,14 +68,12 @@ export function ShareDialog({
   async function crearEnlaceUnico() {
     setError(null);
     startTransition(async () => {
-      const res = modoLista
-        ? await createGroupSigningLink(
-            documentId,
-            nombresDeLaLista,
-            paraQuien,
-            14
-          )
-        : await createSigningLink(documentId, null, paraQuien, 14);
+      const res = await createGroupSigningLink(
+        documentId,
+        nombresDeLaLista,
+        null,
+        14
+      );
       if (res.error) return setError(res.error);
       setEnlaceUnico(`${window.location.origin}/firmar/${res.token}`);
       setCopiadoUnico(false);
@@ -360,14 +354,15 @@ export function ShareDialog({
                   </div>
                   <p className="text-xs text-muted">
                     <strong className="font-medium text-ink">
-                      Para alguien de fuera
+                      Para gente de fuera
                     </strong>{" "}
-                    que solo firma esta vez: un proveedor, un cliente. Abre el
-                    enlace, escribe su nombre y firma —{" "}
+                    que no va a crear cuenta: un proveedor, un cliente, los
+                    asistentes de una reunión. Abren el enlace, escogen su
+                    nombre y firman —{" "}
                     <strong className="font-medium text-ink">
                       sin registrarse
                     </strong>
-                    . Hay que mandar uno por persona. Vence a los 14 días.
+                    . Vence a los 14 días.
                   </p>
 
                   {enlaceUnico ? (
@@ -392,84 +387,49 @@ export function ShareDialog({
                         </button>
                       </div>
                       <p className="text-xs text-muted">
-                        {modoLista
-                          ? `Mándalo al grupo. Cada una de las ${nombresDeLaLista.length} personas escoge su nombre y firma una vez.`
-                          : "Cópialo ahora y mándaselo. No se vuelve a mostrar."}
+                        {nombresDeLaLista.length === 1
+                          ? "Cópialo y mándaselo. No se vuelve a mostrar."
+                          : `Un solo enlace para los ${nombresDeLaLista.length}. Cada quien escoge su nombre y firma una vez.`}
                       </p>
                       <button
                         onClick={() => {
                           setEnlaceUnico(null);
-                          setParaQuien("");
+                          setListaNombres("");
                         }}
                         className="self-start text-xs font-medium text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-ink"
                       >
-                        Crear otro para alguien más
+                        Crear otro enlace
                       </button>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-2.5">
-                      <div className="flex gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setModoLista(false)}
-                          className={`h-8 flex-1 rounded border px-2 text-xs font-medium transition-colors ${
-                            !modoLista
-                              ? "border-seal bg-surface-2"
-                              : "border-line-strong bg-surface hover:bg-surface-2"
-                          }`}
-                        >
-                          Una persona
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setModoLista(true)}
-                          className={`h-8 flex-1 rounded border px-2 text-xs font-medium transition-colors ${
-                            modoLista
-                              ? "border-seal bg-surface-2"
-                              : "border-line-strong bg-surface hover:bg-surface-2"
-                          }`}
-                        >
-                          Varias personas
-                        </button>
-                      </div>
-
-                      {modoLista ? (
-                        <>
-                          <textarea
-                            value={listaNombres}
-                            onChange={(e) => setListaNombres(e.target.value)}
-                            rows={5}
-                            placeholder={PLACEHOLDER_LISTA}
-                            className="min-h-[7rem] w-full rounded border border-line-strong bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-seal"
-                          />
-                          <p className="text-xs text-muted">
-                            Un solo enlace para todos, pero cada quien escoge su
-                            nombre de esta lista y solo puede firmar una vez.
-                            Quien no esté aquí no puede firmar, aunque le pasen
-                            el enlace.
-                            {nombresDeLaLista.length > 0 && (
-                              <strong className="font-medium text-ink">
-                                {" "}
-                                {nombresDeLaLista.length} nombre
-                                {nombresDeLaLista.length === 1 ? "" : "s"}.
-                              </strong>
-                            )}
-                          </p>
-                        </>
-                      ) : (
-                        <input
-                          value={paraQuien}
-                          onChange={(e) => setParaQuien(e.target.value)}
-                          placeholder="¿Para quién? (opcional)"
-                          className="h-10 w-full rounded border border-line-strong bg-surface px-3 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-seal"
-                        />
-                      )}
+                      <textarea
+                        value={listaNombres}
+                        onChange={(e) => setListaNombres(e.target.value)}
+                        rows={4}
+                        placeholder={PLACEHOLDER_LISTA}
+                        className="min-h-[6rem] w-full rounded border border-line-strong bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-seal"
+                      />
+                      <p className="text-xs text-muted">
+                        Escribe un nombre por línea. Sale{" "}
+                        <strong className="font-medium text-ink">
+                          un solo enlace
+                        </strong>{" "}
+                        que puedes mandar al grupo: cada quien escoge su nombre
+                        y firma una vez. Quien no esté en la lista no puede
+                        firmar, aunque le reenvíen el enlace.
+                        {nombresDeLaLista.length > 0 && (
+                          <strong className="font-medium text-ink">
+                            {" "}
+                            {nombresDeLaLista.length} nombre
+                            {nombresDeLaLista.length === 1 ? "" : "s"}.
+                          </strong>
+                        )}
+                      </p>
 
                       <button
                         onClick={crearEnlaceUnico}
-                        disabled={
-                          pending || (modoLista && nombresDeLaLista.length < 2)
-                        }
+                        disabled={pending || nombresDeLaLista.length < 1}
                         className="inline-flex h-10 items-center justify-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
                       >
                         {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
