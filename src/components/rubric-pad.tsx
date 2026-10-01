@@ -12,17 +12,21 @@ import { Eraser, X } from "lucide-react";
  * El trazo se suaviza con curvas cuadráticas entre puntos medios: dibujar con
  * segmentos rectos entre eventos de puntero deja la firma angulosa.
  *
- * **El papel se pinta dentro de un canvas, no con CSS.** Reportado por alguien
- * firmando: con el alto contraste de Windows el recuadro salía negro y la firma
- * no se veía al trazarla. La causa es que el fondo venía de CSS y la tinta de
- * píxeles de canvas: el alto contraste, el modo oscuro forzado del navegador y
- * las extensiones que oscurecen sitios reescriben los colores de CSS pero no
- * tocan lo dibujado en un canvas. Resultado: fondo invertido a negro, tinta
+ * **El papel se pinta dentro del canvas, no con CSS.** Reportado por alguien
+ * firmando: con el alto contraste del sistema el recuadro salía negro y la
+ * firma no se veía al trazarla. La causa es que el fondo venía de CSS y la
+ * tinta de píxeles de canvas: el alto contraste, el modo oscuro forzado del
+ * navegador y las extensiones que oscurecen sitios reescriben los colores de
+ * CSS pero no tocan lo dibujado en un canvas. Fondo invertido a negro, tinta
  * negra intacta, nada visible.
  *
- * Con el papel y la pauta pintados en un canvas de fondo, los dos corren la
- * misma suerte: si algo invierte la página, se invierten ambos y el contraste
- * se conserva; si no la invierte, se ven como se diseñaron.
+ * Tiene que ser el MISMO canvas, no uno de fondo debajo: cualquier regla que
+ * ponga fondo a todos los elementos se lo pone también al canvas de encima, y
+ * ese fondo tapa lo que haya debajo. Comprobado en el navegador.
+ *
+ * Como el papel va en el lienzo visible, la exportación sale de un segundo
+ * lienzo que vive fuera del DOM --ninguna regla de CSS lo alcanza-- donde se
+ * replica cada trazo sin papel. De ahí sale el PNG transparente.
  */
 const TINTA = "#141018";
 const PAPEL = "#ffffff";
@@ -47,7 +51,8 @@ export function RubricPad({
   busyLabel?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fondoRef = useRef<HTMLCanvasElement>(null);
+  /** Copia solo-tinta, fuera del DOM. Es la que se exporta. */
+  const tintaRef = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
   const lastMid = useRef<{ x: number; y: number } | null>(null);
@@ -59,19 +64,25 @@ export function RubricPad({
   } | null>(null);
   const [hasInk, setHasInk] = useState(false);
 
-  /** Papel, pauta y, mientras no haya tinta, la pista de qué hacer. */
-  const pintarFondo = useCallback((conPista: boolean) => {
-    const fondo = fondoRef.current;
-    const ctx = fondo?.getContext("2d");
-    if (!fondo || !ctx) return;
+  /** Los dos contextos: lo que se ve y lo que se exporta. */
+  const contextos = useCallback((): CanvasRenderingContext2D[] => {
+    const a = canvasRef.current?.getContext("2d");
+    const b = tintaRef.current?.getContext("2d");
+    return [a, b].filter(Boolean) as CanvasRenderingContext2D[];
+  }, []);
+
+  /** Papel, pauta y, mientras no haya tinta, la pista. Solo en el visible. */
+  const pintarPapel = useCallback((conPista: boolean) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = fondo.width / dpr;
-    const h = fondo.height / dpr;
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
 
     ctx.fillStyle = PAPEL;
     ctx.fillRect(0, 0, w, h);
@@ -96,34 +107,44 @@ export function RubricPad({
     }
 
     ctx.restore();
+
+    // Repintar el papel borra el trazo del lienzo visible, así que hay que
+    // dejar los ajustes de dibujo como estaban.
+    ctx.strokeStyle = TINTA;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
   }, []);
 
-  // Preparar los dos lienzos cada vez que se abre.
+  // Preparar los lienzos cada vez que se abre.
   useEffect(() => {
     if (!open) return;
     const canvas = canvasRef.current;
-    const fondo = fondoRef.current;
-    if (!canvas || !fondo) return;
+    if (!canvas) return;
+
+    if (!tintaRef.current) tintaRef.current = document.createElement("canvas");
+    const tinta = tintaRef.current;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = canvas.getBoundingClientRect();
-    for (const c of [canvas, fondo]) {
+    for (const c of [canvas, tinta]) {
       c.width = rect.width * dpr;
       c.height = rect.height * dpr;
     }
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(dpr, dpr);
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = TINTA;
+    for (const ctx of [canvas.getContext("2d"), tinta.getContext("2d")]) {
+      if (!ctx) continue;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = TINTA;
+    }
 
-    pintarFondo(true);
+    pintarPapel(true);
     bounds.current = null;
     setHasInk(false);
-  }, [open, pintarFondo]);
+  }, [open, pintarPapel]);
 
   useEffect(() => {
     if (!open) return;
@@ -157,27 +178,25 @@ export function RubricPad({
     lastMid.current = p;
     track(p);
 
+    // Quitar la pista antes del primer trazo: repintar después lo borraría.
+    if (!hasInk) {
+      pintarPapel(false);
+      setHasInk(true);
+    }
+
     // Un toque suelto también deja marca (un punto).
-    const ctx = canvasRef.current?.getContext("2d");
-    if (ctx) {
+    for (const ctx of contextos()) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 1.1, 0, Math.PI * 2);
       ctx.fillStyle = TINTA;
       ctx.fill();
     }
-
-    if (!hasInk) {
-      // La pista estorba en cuanto hay trazo encima.
-      pintarFondo(false);
-      setHasInk(true);
-    }
   }
 
   function move(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawing.current) return;
-    const ctx = canvasRef.current?.getContext("2d");
     const prev = last.current;
-    if (!ctx || !prev) return;
+    if (!prev) return;
 
     const p = pointFrom(e);
     const mid = { x: (prev.x + p.x) / 2, y: (prev.y + p.y) / 2 };
@@ -187,10 +206,12 @@ export function RubricPad({
     // usando el punto real como control. Así el trazo queda continuo: partir
     // siempre del punto real dejaba sin pintar media distancia entre eventos
     // y la firma salía a rayas.
-    ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
-    ctx.stroke();
+    for (const ctx of contextos()) {
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
+      ctx.stroke();
+    }
 
     lastMid.current = mid;
     last.current = p;
@@ -199,14 +220,15 @@ export function RubricPad({
 
   function end() {
     // Cerrar el trazo hasta el último punto real, que si no queda cortado.
-    const ctx = canvasRef.current?.getContext("2d");
     const from = lastMid.current;
     const p = last.current;
-    if (ctx && from && p) {
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
+    if (from && p) {
+      for (const ctx of contextos()) {
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
     }
     drawing.current = false;
     last.current = null;
@@ -214,14 +236,16 @@ export function RubricPad({
   }
 
   function clear() {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-    pintarFondo(true);
+    const tinta = tintaRef.current;
+    const tctx = tinta?.getContext("2d");
+    if (tinta && tctx) {
+      tctx.save();
+      tctx.setTransform(1, 0, 0, 1, 0, 0);
+      tctx.clearRect(0, 0, tinta.width, tinta.height);
+      tctx.restore();
+    }
+
+    pintarPapel(true);
     bounds.current = null;
     lastMid.current = null;
     last.current = null;
@@ -229,29 +253,28 @@ export function RubricPad({
   }
 
   /**
-   * Recorta al área con tinta y exporta PNG transparente.
-   *
-   * Se exporta el lienzo del trazo, nunca el del papel: un PNG con fondo
-   * blanco taparía el texto del documento al estamparlo.
+   * Recorta al área con tinta y exporta PNG transparente, desde la copia sin
+   * papel: exportar el lienzo visible metería un rectángulo blanco sobre el
+   * documento al estamparlo.
    */
   function confirm() {
-    const canvas = canvasRef.current;
+    const tinta = tintaRef.current;
     const b = bounds.current;
-    if (!canvas || !b) return;
+    if (!tinta || !b) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const pad = 8;
     const sx = Math.max(0, (b.minX - pad) * dpr);
     const sy = Math.max(0, (b.minY - pad) * dpr);
-    const sw = Math.min(canvas.width - sx, (b.maxX - b.minX + pad * 2) * dpr);
-    const sh = Math.min(canvas.height - sy, (b.maxY - b.minY + pad * 2) * dpr);
+    const sw = Math.min(tinta.width - sx, (b.maxX - b.minX + pad * 2) * dpr);
+    const sh = Math.min(tinta.height - sy, (b.maxY - b.minY + pad * 2) * dpr);
 
     const out = document.createElement("canvas");
     out.width = Math.max(1, Math.round(sw));
     out.height = Math.max(1, Math.round(sh));
     const octx = out.getContext("2d");
     if (!octx) return;
-    octx.drawImage(canvas, sx, sy, sw, sh, 0, 0, out.width, out.height);
+    octx.drawImage(tinta, sx, sy, sw, sh, 0, 0, out.width, out.height);
 
     onConfirm(out.toDataURL("image/png"));
   }
@@ -285,27 +308,18 @@ export function RubricPad({
 
         <div className="p-5">
           <div
-            className="relative rounded border border-line-strong bg-white"
-            // `bg-white` queda como respaldo para el instante antes de pintar;
-            // el papel de verdad lo pone el canvas de fondo. Declarar el
-            // esquema de color ayuda además con el modo oscuro forzado del
-            // navegador, que de otro modo reinvierte este recuadro.
+            className="rounded border border-line-strong"
+            // Declarar el esquema de color ayuda con el modo oscuro forzado del
+            // navegador; el papel de verdad lo pinta el canvas.
             style={{ colorScheme: "light" }}
           >
-            {/* Papel y pauta. Va en canvas y no en CSS para que no lo toquen
-                el alto contraste ni las extensiones que oscurecen sitios. */}
-            <canvas
-              ref={fondoRef}
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 block h-44 w-full rounded"
-            />
             <canvas
               ref={canvasRef}
               onPointerDown={start}
               onPointerMove={move}
               onPointerUp={end}
               onPointerLeave={end}
-              className="relative block h-44 w-full touch-none"
+              className="block h-44 w-full touch-none rounded"
               aria-label="Área para trazar la firma"
             />
           </div>
