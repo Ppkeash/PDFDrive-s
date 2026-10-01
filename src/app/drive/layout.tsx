@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AppShell } from "@/components/app-shell";
+import { AppShell, type ResumenDePlan } from "@/components/app-shell";
 
 export default async function DriveLayout({
   children,
@@ -14,5 +14,16 @@ export default async function DriveLayout({
 
   if (!user) redirect("/login");
 
-  return <AppShell email={user.email ?? ""}>{children}</AppShell>;
+  // Para el distintivo de la barra. Si falla, la barra se dibuja igual: un
+  // indicador de plan no vale romper toda la navegación.
+  const { data: cupo } = await supabase.rpc("mi_cupo_de_documentos");
+
+  return (
+    <AppShell
+      email={user.email ?? ""}
+      plan={(cupo as ResumenDePlan | null) ?? null}
+    >
+      {children}
+    </AppShell>
+  );
 }

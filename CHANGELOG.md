@@ -12,6 +12,26 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### La prueba gratuita no se veía por ningún lado
+Reportado al usarlo de verdad: alguien entra, se le concede la prueba de 14
+días, y **nada en la pantalla se lo dice**.
+
+El aviso del Drive solo aparece cuando algo aprieta — quedan 3 documentos o
+menos, o la prueba termina en 5 días o menos — y la pantalla `/planes` existía
+sin enlace en ninguna parte: había que escribir la URL a mano.
+
+La idea de callar mientras todo va bien sigue siendo la correcta para no
+fastidiar, pero se pasó de largo: enterarse de que había un plazo el día que se
+vence es la peor forma de descubrirlo.
+
+- **"Mi plan" entra en la barra**, al lado de Verificar, en escritorio y en
+  celular. Antes `/planes` era inalcanzable salvo escribiendo la dirección.
+- **Un distintivo callado** sobre el pie de la barra mientras dure la prueba:
+  "Prueba gratuita · 14 días". No pide nada ni interrumpe; solo está ahí y
+  lleva a `/planes` si alguien quiere mirar.
+- Si la consulta del plan falla, la barra se dibuja igual. Un indicador de plan
+  no vale romper la navegación entera.
+
 ### El documento ya dice con qué respaldo firmó cada quien
 Hasta ahora la ficha de firmas decía solo "Firmado" y la fecha. Con los
 enlaces sin cuenta eso dejaba de ser suficiente: una firma hecha con cuenta de

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
-import { FolderOpen, Inbox, LogOut, ShieldCheck } from "lucide-react";
+import { CreditCard, FolderOpen, Inbox, LogOut, ShieldCheck } from "lucide-react";
 
 const nav = [
   { href: "/drive", label: "Mis documentos", short: "Mis", icon: FolderOpen },
@@ -16,13 +16,54 @@ const nav = [
     icon: Inbox,
   },
   { href: "/verify", label: "Verificar", short: "Verificar", icon: ShieldCheck },
+  { href: "/planes", label: "Mi plan", short: "Plan", icon: CreditCard },
 ];
+
+/** Lo justo para el distintivo de la barra; el detalle vive en /planes. */
+export interface ResumenDePlan {
+  en_prueba?: boolean;
+  vence?: string | null;
+  restantes?: number;
+  sin_espacio?: boolean;
+}
+
+/**
+ * Un distintivo callado, no un aviso.
+ *
+ * El aviso del Drive solo aparece cuando algo aprieta -- quedan pocos
+ * documentos o la prueba se acaba -- y eso dejaba un hueco: con la prueba
+ * recién empezada nadie se enteraba de que estaba en una, y `/planes` no
+ * tenía enlace en ninguna parte. Enterarse de que había un plazo el día que
+ * se vence es la peor forma de descubrirlo.
+ */
+function DistintivoDePlan({ plan }: { plan?: ResumenDePlan | null }) {
+  if (!plan || plan.sin_espacio || !plan.en_prueba || !plan.vence) return null;
+
+  const dias = Math.max(
+    0,
+    Math.ceil((new Date(plan.vence).getTime() - Date.now()) / 86_400_000)
+  );
+
+  return (
+    <Link
+      href="/planes"
+      className="mx-2 mb-1 flex items-center justify-between gap-2 rounded border border-line bg-surface-2 px-2.5 py-2 text-xs transition-colors hover:border-seal"
+    >
+      <span className="text-muted">Prueba gratuita</span>
+      <span className="font-medium tabular-nums">
+        {dias === 0 ? "termina hoy" : `${dias} día${dias === 1 ? "" : "s"}`}
+      </span>
+    </Link>
+  );
+}
 
 export function AppShell({
   email,
+  plan = null,
   children,
 }: {
   email: string;
+  plan?: ResumenDePlan | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -50,6 +91,7 @@ export function AppShell({
         </nav>
 
         <div className="border-t border-line p-3">
+          <DistintivoDePlan plan={plan} />
           <div className="flex items-center justify-between gap-2 px-2 py-1">
             <p className="truncate text-xs text-muted" title={email}>
               {email}
