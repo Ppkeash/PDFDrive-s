@@ -1,4 +1,4 @@
-import { Cartel, FirmarCliente } from "./firmar-cliente";
+import { Cartel, FirmarCliente, type Cupo } from "./firmar-cliente";
 
 /**
  * Pantalla pública de firma por enlace.
@@ -32,6 +32,11 @@ const MOTIVOS: Record<string, { titulo: string; detalle: string }> = {
   documento_cerrado: {
     titulo: "El documento ya está cerrado",
     detalle: "Se firmó por completo y ya no admite más firmas.",
+  },
+  lista_completa: {
+    titulo: "Ya firmaron todos",
+    detalle:
+      "Todas las personas de la lista firmaron este documento. Si creías que faltaba tu firma, avísale a quien te envió el enlace.",
   },
   campo_ya_firmado: {
     titulo: "Ese espacio ya está firmado",
@@ -78,6 +83,8 @@ export default async function FirmarPage({
     <FirmarCliente
       token={params.token}
       datos={{
+        kind: (data.kind as "individual" | "grupal") ?? "individual",
+        cupos: (data.cupos as Cupo[] | null) ?? null,
         documento: data.documento as string,
         etiqueta: (data.etiqueta as string | null) ?? null,
         pdfUrl: data.pdf_url as string,

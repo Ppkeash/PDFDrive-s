@@ -66,6 +66,10 @@ type Actor = {
   name: string | null;
   kind: "cuenta" | "enlace";
   linkId: string | null;
+  /** Cupo tomado en un enlace grupal; null en los individuales. */
+  slotId: string | null;
+  /** Dos cupos del mismo enlace desde el mismo navegador. Se anota, no se bloquea. */
+  deviceReused: boolean;
 };
 
 function motivoEnlace(motivo: unknown): string {
@@ -80,6 +84,10 @@ function motivoEnlace(motivo: unknown): string {
       return "El documento ya está cerrado.";
     case "campo_ya_firmado":
       return "Ese espacio ya está firmado.";
+    case "lista_completa":
+      return "Ya firmaron todas las personas de la lista.";
+    case "cupo_tomado":
+      return "Alguien acaba de firmar con ese nombre. Elige otro o avisa a quien te envió el enlace.";
     default:
       return "Este enlace no es válido.";
   }
@@ -103,8 +111,17 @@ Deno.serve(async (req) => {
     // solo lo puede hacer quien manda en el documento (dueño o editor).
     // `retract` quita una rúbrica ya puesta (se firmó mal) para volver a
     // firmar; solo vale mientras el documento siga abierto.
-    const { documentId, fieldId, rubric, seal, retract, linkToken, signerName } =
-      await req.json();
+    const {
+      documentId,
+      fieldId,
+      rubric,
+      seal,
+      retract,
+      linkToken,
+      signerName,
+      slotId,
+      deviceId,
+    } = await req.json();
     if (!seal && !retract && (!rubric || typeof rubric !== "string"))
       return json({ error: "Falta la rúbrica" }, 400);
 
@@ -126,17 +143,43 @@ Deno.serve(async (req) => {
       if (seal || retract)
         return json({ error: "Este enlace solo sirve para firmar." }, 403);
 
-      const nombre = typeof signerName === "string" ? signerName.trim() : "";
-      if (nombre.length < 3)
-        return json({ error: "Escribe tu nombre completo para firmar." }, 400);
-      if (nombre.length > 120)
-        return json({ error: "Ese nombre es demasiado largo." }, 400);
-
       const { data: estado } = await admin.rpc("estado_enlace_de_firma", {
         p_token: linkToken,
       });
       const e = estado as Record<string, unknown> | null;
       if (!e?.ok) return json({ error: motivoEnlace(e?.motivo) }, 403);
+
+      const grupal = e.kind === "grupal";
+      let nombre: string;
+      let cupo: string | null = null;
+      let dispositivoRepetido = false;
+
+      if (grupal) {
+        // En un enlace grupal el nombre NO lo escribe quien firma: lo escogió
+        // de la lista que armó quien envió el enlace. Esa es toda la defensa
+        // del enlace grupal -- si el nombre fuera libre, un extraño que lo
+        // reciba reenviado podría inventarse uno.
+        if (typeof slotId !== "string" || !slotId)
+          return json({ error: "Escoge tu nombre de la lista." }, 400);
+
+        const { data: reserva } = await admin.rpc("tomar_cupo_de_firma", {
+          p_link_id: e.link_id as string,
+          p_slot_id: slotId,
+          p_device: typeof deviceId === "string" ? deviceId.slice(0, 80) : null,
+        });
+        const r = reserva as Record<string, unknown> | null;
+        if (!r?.ok) return json({ error: motivoEnlace(r?.motivo) }, 409);
+
+        nombre = r.nombre as string;
+        cupo = slotId;
+        dispositivoRepetido = Boolean(r.dispositivo_repetido);
+      } else {
+        nombre = typeof signerName === "string" ? signerName.trim() : "";
+        if (nombre.length < 3)
+          return json({ error: "Escribe tu nombre completo para firmar." }, 400);
+        if (nombre.length > 120)
+          return json({ error: "Ese nombre es demasiado largo." }, 400);
+      }
 
       // El documento lo manda el enlace, nunca el cliente: si no, cualquiera
       // con un enlace válido firmaría en un documento ajeno.
@@ -148,6 +191,8 @@ Deno.serve(async (req) => {
         name: nombre,
         kind: "enlace",
         linkId: e.link_id as string,
+        slotId: cupo,
+        deviceReused: dispositivoRepetido,
       };
     } else {
       const authHeader = req.headers.get("Authorization") ?? "";
@@ -169,6 +214,8 @@ Deno.serve(async (req) => {
         name: null,
         kind: "cuenta",
         linkId: null,
+        slotId: null,
+        deviceReused: false,
       };
     }
 
@@ -624,21 +671,36 @@ Deno.serve(async (req) => {
         return json({ error: "No se pudo registrar la firma." }, 500);
       }
 
-      // El enlace se quema aquí, no antes: si el estampado falla, el enlace
-      // sigue sirviendo y la persona puede reintentar.
       if (actor.kind === "enlace" && actor.linkId) {
-        const { error: linkErr } = await admin
-          .from("signing_links")
-          .update({
-            used_at: new Date().toISOString(),
-            signer_name: actor.name,
-            signer_ip: ip,
-            signer_user_agent: userAgent,
-            signature_id: sigId,
-          })
-          .eq("id", actor.linkId)
-          .is("used_at", null);
-        if (linkErr) console.error("signing_links.update:", linkErr);
+        if (actor.slotId) {
+          // El cupo ya se reservó antes de estampar, para que dos personas no
+          // puedan tomar el mismo nombre a la vez. Aquí solo se le ata la
+          // firma que acaba de quedar.
+          const { error: slotErr } = await admin
+            .from("signing_link_slots")
+            .update({
+              signature_id: sigId,
+              signer_ip: ip,
+              signer_user_agent: userAgent,
+            })
+            .eq("id", actor.slotId);
+          if (slotErr) console.error("signing_link_slots.update:", slotErr);
+        } else {
+          // Individual: se quema aquí y no antes. Si el estampado falla, el
+          // enlace sigue sirviendo y la persona puede reintentar.
+          const { error: linkErr } = await admin
+            .from("signing_links")
+            .update({
+              used_at: new Date().toISOString(),
+              signer_name: actor.name,
+              signer_ip: ip,
+              signer_user_agent: userAgent,
+              signature_id: sigId,
+            })
+            .eq("id", actor.linkId)
+            .is("used_at", null);
+          if (linkErr) console.error("signing_links.update:", linkErr);
+        }
       }
     }
 
@@ -662,6 +724,7 @@ Deno.serve(async (req) => {
         signer_name: actor.name,
         signer_kind: actor.kind,
         user_agent: userAgent,
+        dispositivo_repetido: actor.deviceReused || undefined,
         field_id: field?.id ?? null,
         input_hash: inputHash,
         output_hash: outHash,

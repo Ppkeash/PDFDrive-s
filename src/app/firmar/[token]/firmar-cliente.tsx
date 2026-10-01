@@ -6,11 +6,39 @@ import { RubricPad } from "@/components/rubric-pad";
 import { Spinner } from "@/components/spinner";
 import { ShieldCheck } from "lucide-react";
 
+export interface Cupo {
+  id: string;
+  nombre: string;
+  firmado: boolean;
+}
+
 export interface DatosDelEnlace {
+  kind: "individual" | "grupal";
   documento: string;
   etiqueta: string | null;
   pdfUrl: string;
   campo: { page: number; x: number; y: number; w: number; h: number } | null;
+  cupos: Cupo[] | null;
+}
+
+/**
+ * Marca del navegador, para notar si dos nombres de la misma lista se firman
+ * desde el mismo equipo. No bloquea nada: un acta firmada por todos en la
+ * misma tablet, pasándola por la mesa, es un uso normal. Solo queda anotado
+ * para quien después revise el documento.
+ */
+function marcaDelDispositivo(): string | null {
+  try {
+    const clave = "fd_dispositivo";
+    let v = localStorage.getItem(clave);
+    if (!v) {
+      v = crypto.randomUUID();
+      localStorage.setItem(clave, v);
+    }
+    return v;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -28,7 +56,9 @@ export function FirmarCliente({
   token: string;
   datos: DatosDelEnlace;
 }) {
+  const grupal = datos.kind === "grupal";
   const [nombre, setNombre] = useState("");
+  const [cupoElegido, setCupoElegido] = useState<string | null>(null);
   const [identificado, setIdentificado] = useState(false);
   const [padAbierto, setPadAbierto] = useState(false);
   const [firmando, setFirmando] = useState(false);
@@ -65,6 +95,8 @@ export function FirmarCliente({
           body: JSON.stringify({
             linkToken: token,
             signerName: nombre.trim(),
+            slotId: cupoElegido,
+            deviceId: marcaDelDispositivo(),
             rubric: rubrica,
           }),
         }
@@ -109,7 +141,60 @@ export function FirmarCliente({
         )}
       </header>
 
-      {!identificado ? (
+      {!identificado && grupal ? (
+        <section className="mt-8 rounded-lg border border-line bg-surface p-6">
+          <h2 className="font-display text-lg font-semibold">¿Quién eres?</h2>
+          <p className="mt-1.5 text-sm text-muted">
+            Escoge tu nombre de la lista. La armó quien te envió el documento, y
+            cada nombre se puede usar una sola vez.
+          </p>
+
+          <ul className="mt-5 flex flex-col gap-1.5">
+            {(datos.cupos ?? []).map((c) => {
+              const elegido = cupoElegido === c.id;
+              return (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    disabled={c.firmado}
+                    onClick={() => {
+                      setCupoElegido(c.id);
+                      setNombre(c.nombre);
+                    }}
+                    className={`flex w-full items-center justify-between gap-3 rounded border px-3.5 py-3 text-left text-sm transition-colors ${
+                      c.firmado
+                        ? "cursor-not-allowed border-line bg-surface-2 text-muted"
+                        : elegido
+                          ? "border-seal bg-surface-2"
+                          : "border-line-strong bg-surface hover:bg-surface-2"
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">{c.nombre}</span>
+                    {c.firmado && (
+                      <span className="shrink-0 text-micro uppercase text-muted">
+                        ya firmó
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          <button
+            onClick={() => cupoElegido && setIdentificado(true)}
+            disabled={!cupoElegido}
+            className="mt-5 inline-flex h-11 w-full items-center justify-center rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            Ver el documento
+          </button>
+
+          <p className="mt-4 text-xs text-muted">
+            ¿No está tu nombre? Avísale a quien te envió el enlace — solo esa
+            persona puede agregarlo.
+          </p>
+        </section>
+      ) : !identificado ? (
         <section className="mt-8 rounded-lg border border-line bg-surface p-6">
           <h2 className="font-display text-lg font-semibold">
             ¿Quién va a firmar?
@@ -179,10 +264,13 @@ export function FirmarCliente({
               Firmar documento
             </button>
             <button
-              onClick={() => setIdentificado(false)}
+              onClick={() => {
+                setIdentificado(false);
+                if (grupal) setCupoElegido(null);
+              }}
               className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink"
             >
-              No soy {nombre.trim()}
+              {grupal ? "Escoger otro nombre" : `No soy ${nombre.trim()}`}
             </button>
           </div>
         </>

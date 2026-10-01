@@ -288,3 +288,80 @@ export async function revokeSigningLink(documentId: string, linkId: string) {
   revalidatePath(`/doc/${documentId}`);
   return {};
 }
+
+/**
+ * Enlace grupal con lista de nombres (ver migración 0018).
+ *
+ * El caso que lo pide: un acta que firman 20 personas que no usan la
+ * aplicación. Mandar 20 enlaces distintos no lo hace nadie.
+ *
+ * La lista es lo que lo sostiene. Un enlace grupal sin lista dejaría que la
+ * misma persona firme dos veces con nombres distintos, o que un extraño que
+ * lo reciba reenviado se invente un nombre. Con la lista cerrada, para colarse
+ * hay que tomar el cupo de alguien concreto -- y esa persona lo nota.
+ */
+export async function createGroupSigningLink(
+  documentId: string,
+  nombres: string[],
+  label: string | null,
+  diasDeVigencia = 14
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado" };
+
+  // Se limpian aquí y no en la base: duplicados y espacios sobran siempre, y
+  // dos "Juan Pérez" en la misma lista harían imposible saber quién firmó.
+  const vistos = new Set<string>();
+  const limpios: string[] = [];
+  for (const n of nombres) {
+    const nombre = n.trim().replace(/\s+/g, " ");
+    if (nombre.length < 3) continue;
+    const clave = nombre.toLowerCase();
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+    limpios.push(nombre.slice(0, 120));
+  }
+
+  if (limpios.length < 2)
+    return { error: "Escribe al menos dos nombres, uno por línea." };
+  if (limpios.length > 100)
+    return { error: "Son demasiados nombres para un solo enlace (máximo 100)." };
+
+  const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
+  const expires = new Date(
+    Date.now() + Math.max(1, diasDeVigencia) * 86_400_000
+  ).toISOString();
+
+  const { data: enlace, error } = await supabase
+    .from("signing_links")
+    .insert({
+      document_id: documentId,
+      token,
+      kind: "grupal",
+      label: label?.trim() || null,
+      created_by: user.id,
+      expires_at: expires,
+    })
+    .select("id")
+    .single();
+  if (error || !enlace) return { error: error?.message ?? "No se pudo crear" };
+
+  const { error: cuposErr } = await supabase.from("signing_link_slots").insert(
+    limpios.map((nombre, i) => ({
+      link_id: enlace.id,
+      display_name: nombre,
+      position: i,
+    }))
+  );
+  if (cuposErr) {
+    // Sin cupos el enlace no sirve para nada y sería una trampa dejarlo vivo.
+    await supabase.from("signing_links").delete().eq("id", enlace.id);
+    return { error: cuposErr.message };
+  }
+
+  revalidatePath(`/doc/${documentId}`);
+  return { token, cupos: limpios.length };
+}

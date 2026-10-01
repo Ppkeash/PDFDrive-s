@@ -86,10 +86,14 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
+      kind: e.kind ?? "individual",
       documento: doc.name,
       etiqueta: e.etiqueta ?? null,
       pdf_url: firmada.signedUrl,
       campo,
+      // Solo en los grupales: la lista cerrada de nombres, con cuáles ya
+      // firmaron. Es lo único que esta pantalla necesita saber de los demás.
+      cupos: e.cupos ?? null,
     });
   } catch (err) {
     console.error("open-signing-link:", err);

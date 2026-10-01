@@ -12,6 +12,37 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Enlace grupal con lista de nombres
+Migración `0018_enlace_grupal_con_lista.sql`, cambios en `sign-pdf` y
+`open-signing-link`, y el formulario de Compartir. Probado contra producción.
+
+El caso que lo pide: un acta que firman 20 personas que no usan la aplicación.
+Mandar 20 enlaces de un solo uso no lo hace nadie.
+
+Un enlace grupal libre no servía: sin nada que lo sujete, la misma persona
+firma dos veces con nombres distintos, o firma en el lugar de otro, y
+reenviado deja entrar a cualquiera.
+
+**Lo que lo sujeta es la lista.** Quien envía escribe de antemano a quién
+espera; quien abre el enlace escoge cuál de esos es, y ese nombre se gasta. Un
+extraño que reciba el enlace reenviado no puede inventarse un nombre: tendría
+que tomar el cupo de alguien concreto, y esa persona lo nota porque ve su
+nombre ya firmado.
+
+- El nombre **no lo escribe quien firma** en el modo grupal — lo escoge de la
+  lista. Esa es toda la defensa.
+- La reserva del cupo se hace en una sola sentencia condicionada a que siga
+  libre, así que si dos personas abren el mismo nombre a la vez, una gana y la
+  otra recibe que ya está tomado.
+- Nombres repetidos se descartan al crear la lista: dos "Juan Pérez" harían
+  imposible saber quién firmó.
+
+**La IP no se usa para detectar abusos aquí, y es deliberado**: 20 personas
+firmando desde la misma oficina comparten una sola IP, así que marcarlas a
+todas no diría nada. La señal es el navegador, y aun así solo se anota —
+un acta firmada por todos en la misma tablet, pasándola por la mesa, es un uso
+normal y frecuente. Queda en la auditoría para quien revise, no bloquea.
+
 ### Los dos tipos de enlace no se distinguían
 Pregunta de alguien usándolo: *¿el enlace es para una persona o es grupal?*
 Buena señal de que la pantalla no lo decía.
