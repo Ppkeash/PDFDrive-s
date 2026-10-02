@@ -8,6 +8,8 @@ import { renameDocument, softDeleteDocument } from "@/app/drive/actions";
 import { StatusChip } from "@/components/status-chip";
 import { MenuItem, RowMenu } from "@/components/row-menu";
 import { MoveDialog, type FolderOption } from "@/components/move-dialog";
+import { NameDialog } from "@/components/name-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Download, FolderInput, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DocStatus } from "@/types";
@@ -17,21 +19,35 @@ export function DocumentRow({
   name,
   status,
   storagePath,
-  createdAt,
+  cuando,
+  fechaCompleta,
   folderId,
   folders,
+  ruta = null,
+  seleccionado = false,
+  onSeleccionar,
 }: {
   id: string;
   name: string;
   status: DocStatus;
   storagePath: string;
-  createdAt: string;
+  /** Texto corto de la fecha, ya formateado en el servidor. */
+  cuando: string;
+  /** Fecha y hora completas, para el `title`. */
+  fechaCompleta: string;
   folderId: string | null;
   folders: FolderOption[];
+  /** Carpeta donde vive. Se muestra al buscar, que es cuando no se sabe. */
+  ruta?: string | null;
+  seleccionado?: boolean;
+  onSeleccionar?: (id: string, valor: boolean) => void;
 }) {
   const router = useRouter();
   const supabase = createClient();
   const [moveOpen, setMoveOpen] = useState(false);
+  const [renombrando, setRenombrando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   async function download() {
@@ -41,19 +57,21 @@ export function DocumentRow({
     if (data?.signedUrl) window.open(data.signedUrl, "_blank");
   }
 
-  function rename() {
-    const next = window.prompt("Nuevo nombre", name);
-    if (!next || next === name) return;
+  function renombrar(nombre: string) {
+    setError(null);
     startTransition(async () => {
-      await renameDocument(id, next);
+      const res = await renameDocument(id, nombre);
+      if (res.error) return setError(res.error);
+      setRenombrando(false);
       router.refresh();
     });
   }
 
-  function remove() {
-    if (!window.confirm(`¿Mover "${name}" a la papelera?`)) return;
+  function borrar() {
     startTransition(async () => {
-      await softDeleteDocument(id);
+      const res = await softDeleteDocument(id);
+      if (res.error) return setError(res.error);
+      setBorrando(false);
       router.refresh();
     });
   }
@@ -61,20 +79,39 @@ export function DocumentRow({
   return (
     <li
       className={cn(
-        "group relative flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-2",
+        "group relative flex items-center gap-3 px-4 py-3.5 transition-colors sm:px-5",
+        seleccionado ? "bg-seal-soft" : "hover:bg-surface-2",
         pending && "pointer-events-none opacity-50"
       )}
     >
+      {onSeleccionar && (
+        // z-10: la fila entera es un enlace con una capa invisible encima, y
+        // sin esto la casilla quedaría debajo y no se podría marcar.
+        <span className="relative z-10 shrink-0">
+          <input
+            type="checkbox"
+            checked={seleccionado}
+            onChange={(e) => onSeleccionar(id, e.target.checked)}
+            aria-label={`Seleccionar ${name}`}
+            className="h-4 w-4 cursor-pointer accent-seal"
+          />
+        </span>
+      )}
+
       <PageMark />
 
       <Link href={`/doc/${id}`} className="min-w-0 flex-1 py-0.5">
         <p className="truncate text-sm font-medium">{name}</p>
-        <p className="tnum mt-0.5 font-mono text-xs text-muted">
-          {new Date(createdAt).toLocaleDateString("es", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}
+        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+          <span className="tnum shrink-0 font-mono" title={fechaCompleta}>
+            {cuando}
+          </span>
+          {ruta && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="truncate">{ruta}</span>
+            </>
+          )}
         </p>
         <span className="absolute inset-0" aria-hidden />
       </Link>
@@ -107,7 +144,8 @@ export function DocumentRow({
                 icon={<Pencil />}
                 onClick={() => {
                   close();
-                  rename();
+                  setError(null);
+                  setRenombrando(true);
                 }}
               >
                 Renombrar
@@ -117,10 +155,11 @@ export function DocumentRow({
                 danger
                 onClick={() => {
                   close();
-                  remove();
+                  setError(null);
+                  setBorrando(true);
                 }}
               >
-                Eliminar
+                Enviar a la papelera
               </MenuItem>
             </>
           )}
@@ -129,12 +168,45 @@ export function DocumentRow({
 
       <MoveDialog
         open={moveOpen}
-        documentId={id}
-        documentName={name}
+        documentIds={[id]}
+        etiqueta={name}
         currentFolderId={folderId}
         folders={folders}
         onClose={() => setMoveOpen(false)}
       />
+
+      <NameDialog
+        open={renombrando}
+        title="Renombrar documento"
+        label="Nombre del documento"
+        initial={name}
+        confirmLabel="Guardar"
+        busy={pending}
+        error={error}
+        onSubmit={renombrar}
+        onCancel={() => !pending && setRenombrando(false)}
+      />
+
+      <ConfirmDialog
+        open={borrando}
+        title="¿Enviarlo a la papelera?"
+        confirmLabel="Enviar a la papelera"
+        tone="danger"
+        busy={pending}
+        onConfirm={borrar}
+        onCancel={() => !pending && setBorrando(false)}
+      >
+        <p className="truncate font-medium text-ink">{name}</p>
+        <p>
+          Queda en la papelera y se puede restaurar. Las firmas que ya tenga no
+          se tocan.
+        </p>
+        {error && (
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+        )}
+      </ConfirmDialog>
     </li>
   );
 }

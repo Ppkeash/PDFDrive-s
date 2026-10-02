@@ -5,7 +5,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
-import { CreditCard, FolderOpen, Inbox, LogOut, ShieldCheck } from "lucide-react";
+import {
+  CreditCard,
+  FolderOpen,
+  Inbox,
+  LogOut,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 
 const nav = [
   { href: "/drive", label: "Mis documentos", short: "Mis", icon: FolderOpen },
@@ -16,6 +23,12 @@ const nav = [
     icon: Inbox,
   },
   { href: "/verify", label: "Verificar", short: "Verificar", icon: ShieldCheck },
+  {
+    href: "/drive/papelera",
+    label: "Papelera",
+    short: "Papelera",
+    icon: Trash2,
+  },
   { href: "/planes", label: "Mi plan", short: "Plan", icon: CreditCard },
 ];
 

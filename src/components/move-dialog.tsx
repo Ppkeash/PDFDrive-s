@@ -2,27 +2,38 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { moveDocument } from "@/app/drive/actions";
+import { moveDocuments } from "@/app/drive/actions";
 import { Spinner } from "@/components/spinner";
 import { Folder, FolderOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type FolderOption = { id: string; name: string };
+export type FolderOption = { id: string; name: string; ruta?: string };
 
+/**
+ * Mover documentos a una carpeta.
+ *
+ * Acepta una lista, no un documento: la misma pantalla sirve para el menú de
+ * una fila y para una selección de veinte. Mover de a uno veinte documentos
+ * recién subidos no es un flujo, es un castigo.
+ */
 export function MoveDialog({
   open,
-  documentId,
-  documentName,
-  currentFolderId,
+  documentIds,
+  etiqueta,
+  currentFolderId = null,
   folders,
   onClose,
+  onDone,
 }: {
   open: boolean;
-  documentId: string;
-  documentName: string;
-  currentFolderId: string | null;
+  documentIds: string[];
+  /** Qué se está moviendo: el nombre, o "3 documentos". */
+  etiqueta: string;
+  /** Carpeta actual, si todos comparten una. Deshabilita moverlos ahí mismo. */
+  currentFolderId?: string | null;
   folders: FolderOption[];
   onClose: () => void;
+  onDone?: () => void;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<string | null>(currentFolderId);
@@ -45,16 +56,17 @@ export function MoveDialog({
   function submit() {
     setError(null);
     startTransition(async () => {
-      const res = await moveDocument(documentId, target);
+      const res = await moveDocuments(documentIds, target);
       if (res.error) return setError(res.error);
       onClose();
+      onDone?.();
       router.refresh();
     });
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
@@ -66,7 +78,7 @@ export function MoveDialog({
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <h2 id="move-title" className="font-display text-lg font-semibold">
-            Mover documento
+            {documentIds.length === 1 ? "Mover documento" : "Mover documentos"}
           </h2>
           <button
             onClick={onClose}
@@ -78,7 +90,7 @@ export function MoveDialog({
         </div>
 
         <div className="p-5">
-          <p className="mb-4 truncate text-sm text-muted">{documentName}</p>
+          <p className="mb-4 truncate text-sm text-muted">{etiqueta}</p>
 
           <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
             <Option
@@ -93,6 +105,9 @@ export function MoveDialog({
                 key={f.id}
                 icon={<Folder className="h-4 w-4" />}
                 label={f.name}
+                // La ruta importa cuando hay carpetas anidadas con nombres
+                // parecidos: "Actas" dentro de "2026" no es "Actas" sin más.
+                hint={f.ruta}
                 selected={target === f.id}
                 onSelect={() => setTarget(f.id)}
               />
@@ -154,7 +169,7 @@ function Option({
       <span className="shrink-0">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{label}</span>
-        {hint && <span className="block text-xs text-muted">{hint}</span>}
+        {hint && <span className="block truncate text-xs text-muted">{hint}</span>}
       </span>
     </button>
   );

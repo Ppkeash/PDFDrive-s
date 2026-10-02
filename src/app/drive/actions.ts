@@ -6,6 +6,40 @@ import { createClient } from "@/lib/supabase/server";
 // La RLS de Supabase garantiza que solo el dueño (o quien tenga acceso) pueda
 // mutar cada fila; aquí solo orquestamos.
 
+/** Lo que se repite en cada acción del Drive. */
+function refrescarDrive() {
+  revalidatePath("/drive");
+  revalidatePath("/drive/papelera");
+}
+
+/**
+ * Nombre ya usado por una carpeta hermana.
+ *
+ * La base no tiene índice único por (padre, nombre) --nunca lo tuvo-- así que
+ * sin esto se pueden crear dos "Actas 2026" en el mismo sitio y después no hay
+ * forma de distinguirlas. Se comprueba aquí en vez de añadir el índice porque
+ * puede haber nombres repetidos de antes, y una migración que falla al crear
+ * el índice dejaría la base a medias.
+ */
+async function nombreOcupadoEntreHermanas(
+  supabase: ReturnType<typeof createClient>,
+  parentId: string | null,
+  name: string,
+  exceptoId?: string
+) {
+  const q = supabase.from("folders").select("id, name");
+  const { data } = parentId
+    ? await q.eq("parent_id", parentId)
+    : await q.is("parent_id", null);
+
+  return (data ?? []).some(
+    (f) =>
+      f.id !== exceptoId &&
+      f.name.trim().toLowerCase() === name.trim().toLowerCase()
+  );
+}
+
+/** Crea la carpeta y devuelve su id, para poder entrar en ella al terminar. */
 export async function createFolder(name: string, parentId?: string | null) {
   const supabase = createClient();
   const {
@@ -13,64 +47,198 @@ export async function createFolder(name: string, parentId?: string | null) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "No autenticado" };
 
-  const { error } = await supabase
+  const limpio = name.trim();
+  if (!limpio) return { error: "La carpeta necesita un nombre." };
+
+  const padre = parentId ?? null;
+  if (await nombreOcupadoEntreHermanas(supabase, padre, limpio))
+    return { error: `Ya hay una carpeta llamada "${limpio}" en este sitio.` };
+
+  const { data, error } = await supabase
     .from("folders")
-    .insert({ owner_id: user.id, name, parent_id: parentId ?? null });
+    .insert({ owner_id: user.id, name: limpio, parent_id: padre })
+    .select("id")
+    .single();
   if (error) return { error: error.message };
-  revalidatePath("/drive");
-  return {};
+
+  refrescarDrive();
+  return { id: data.id as string };
 }
 
 export async function renameFolder(id: string, name: string) {
   const supabase = createClient();
-  const { error } = await supabase.from("folders").update({ name }).eq("id", id);
+
+  const limpio = name.trim();
+  if (!limpio) return { error: "La carpeta necesita un nombre." };
+
+  const { data: actual, error: errLectura } = await supabase
+    .from("folders")
+    .select("parent_id")
+    .eq("id", id)
+    .single();
+  if (errLectura) return { error: errLectura.message };
+
+  if (
+    await nombreOcupadoEntreHermanas(
+      supabase,
+      actual.parent_id ?? null,
+      limpio,
+      id
+    )
+  )
+    return { error: `Ya hay una carpeta llamada "${limpio}" en este sitio.` };
+
+  const { error } = await supabase
+    .from("folders")
+    .update({ name: limpio })
+    .eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/drive");
+
+  refrescarDrive();
   return {};
 }
 
 /**
- * Borra la carpeta. Los documentos que contenía no se pierden: la clave
- * foránea es `on delete set null`, así que vuelven a la raíz.
+ * Borra la carpeta y sube su contenido un nivel.
+ *
+ * Antes se borraba la fila a secas y el resto lo decidían las claves foráneas:
+ * `folders.parent_id` es `on delete cascade`, así que **todas las subcarpetas
+ * desaparecían**, y los documentos de todo el subárbol caían a la raíz
+ * (`documents.folder_id` es `on delete set null`). Es decir: borrar una
+ * carpeta destruía su organización interna y desparramaba los documentos, tras
+ * un `confirm` de una línea que ni lo mencionaba.
+ *
+ * Ahora el contenido directo se reubica a propósito en la carpeta padre --o en
+ * la raíz, si la carpeta estaba arriba-- y solo entonces se borra la fila, ya
+ * vacía. Ninguna subcarpeta se pierde y nada aparece donde no se espera.
  */
 export async function deleteFolder(id: string) {
   const supabase = createClient();
+
+  const { data: carpeta, error: errLectura } = await supabase
+    .from("folders")
+    .select("parent_id")
+    .eq("id", id)
+    .single();
+  if (errLectura) return { error: errLectura.message };
+
+  const destino = (carpeta.parent_id as string | null) ?? null;
+
+  const { error: errCarpetas } = await supabase
+    .from("folders")
+    .update({ parent_id: destino })
+    .eq("parent_id", id);
+  if (errCarpetas) return { error: errCarpetas.message };
+
+  const { error: errDocs } = await supabase
+    .from("documents")
+    .update({ folder_id: destino })
+    .eq("folder_id", id);
+  if (errDocs) return { error: errDocs.message };
+
   const { error } = await supabase.from("folders").delete().eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/drive");
-  return {};
+
+  refrescarDrive();
+  return { destino };
 }
 
 export async function moveDocument(id: string, folderId: string | null) {
+  return moveDocuments([id], folderId);
+}
+
+/** Mover varios: subir veinte documentos y moverlos de a uno no es un flujo. */
+export async function moveDocuments(ids: string[], folderId: string | null) {
+  if (ids.length === 0) return {};
   const supabase = createClient();
   const { error } = await supabase
     .from("documents")
     .update({ folder_id: folderId })
-    .eq("id", id);
+    .in("id", ids);
   if (error) return { error: error.message };
-  revalidatePath("/drive");
+  refrescarDrive();
   return {};
 }
 
 export async function renameDocument(id: string, name: string) {
   const supabase = createClient();
+  const limpio = name.trim();
+  if (!limpio) return { error: "El documento necesita un nombre." };
+
   const { error } = await supabase
     .from("documents")
-    .update({ name })
+    .update({ name: limpio })
     .eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/drive");
+  refrescarDrive();
   return {};
 }
 
 export async function softDeleteDocument(id: string) {
+  return trashDocuments([id]);
+}
+
+export async function trashDocuments(ids: string[]) {
+  if (ids.length === 0) return {};
   const supabase = createClient();
   const { error } = await supabase
     .from("documents")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .in("id", ids);
   if (error) return { error: error.message };
-  revalidatePath("/drive");
+  refrescarDrive();
+  return {};
+}
+
+/**
+ * Saca un documento de la papelera.
+ *
+ * Devuelve dónde quedó: si la carpeta en la que estaba se borró mientras el
+ * documento estaba en la papelera, la clave foránea ya puso `folder_id` en
+ * null y el documento aparece en la raíz. Hay que decirlo, o la persona lo
+ * busca donde ya no está.
+ */
+export async function restoreDocument(id: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("documents")
+    .update({ deleted_at: null })
+    .eq("id", id)
+    .select("folder_id")
+    .single();
+  if (error) return { error: error.message };
+  refrescarDrive();
+  return { folderId: (data.folder_id as string | null) ?? null };
+}
+
+/**
+ * Borrado definitivo: primero los archivos, después la fila.
+ *
+ * En ese orden a propósito. Si se borra la fila primero y falla el borrado del
+ * archivo, queda un objeto en Storage que ya nadie nombra: invisible y
+ * imposible de limpiar sin entrar al panel de Supabase. Al contrario, si el
+ * archivo se va y la fila se queda, la fila sigue a la vista en la papelera y
+ * se puede volver a intentar.
+ */
+export async function deleteDocumentForever(id: string) {
+  const supabase = createClient();
+
+  const { data: doc, error: errLectura } = await supabase
+    .from("documents")
+    .select("storage_path, signed_path")
+    .eq("id", id)
+    .single();
+  if (errLectura) return { error: errLectura.message };
+
+  if (doc.storage_path)
+    await supabase.storage.from("originals").remove([doc.storage_path]);
+  if (doc.signed_path)
+    await supabase.storage.from("signed").remove([doc.signed_path]);
+
+  const { error } = await supabase.from("documents").delete().eq("id", id);
+  if (error) return { error: error.message };
+
+  refrescarDrive();
   return {};
 }
 

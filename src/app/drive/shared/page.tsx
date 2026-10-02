@@ -11,10 +11,33 @@ export default async function SharedPage() {
   // RLS: solo devuelve documentos donde el usuario tiene un share vigente.
   const { data: shares } = await supabase
     .from("document_shares")
-    .select("role, documents ( id, name, status )")
+    // `deleted_at` hay que pedirlo y filtrarlo: un documento que su
+    // propietario mandó a la papelera seguía apareciendo aquí como si
+    // nada. La política de lectura de la base ahora también lo esconde
+    // (migración 0021), pero el filtro explícito deja claro qué se lista.
+    .select("role, documents ( id, name, status, deleted_at )")
     .not("documents", "is", null);
 
-  const items = (shares ?? []).filter((s) => s.documents);
+  // El `select` anidado llega tipado como lista aunque sea una sola fila, así
+  // que se normaliza aquí una vez en vez de ir casteando en cada uso.
+  type DocCompartido = {
+    id: string;
+    name: string;
+    status: DocStatus;
+    deleted_at: string | null;
+  };
+
+  const items = (shares ?? [])
+    .map((s) => ({
+      role: s.role as string,
+      doc: (Array.isArray(s.documents)
+        ? s.documents[0]
+        : s.documents) as unknown as DocCompartido | null,
+    }))
+    .filter(
+      (s): s is { role: string; doc: DocCompartido } =>
+        Boolean(s.doc) && !s.doc!.deleted_at
+    );
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
@@ -42,14 +65,10 @@ export default async function SharedPage() {
         </div>
       ) : (
         <ul className="mt-6 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
-          {items.map((s, i) => {
-            const doc = s.documents as unknown as {
-              id: string;
-              name: string;
-              status: string;
-            };
+          {items.map((s) => {
+            const doc = s.doc;
             return (
-              <li key={i}>
+              <li key={doc.id}>
                 <Link
                   href={`/doc/${doc.id}`}
                   className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-2"

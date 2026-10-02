@@ -10,6 +10,93 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+## 2026-10-02 (tarde)
+
+### El Drive se puede recorrer: subida múltiple, fechas, buscador y papelera
+Un cambio grande, con dos arreglos concretos que se pedían y el orden que les
+faltaba alrededor.
+
+**Se suben varios documentos a la vez.** El botón leía `files[0]`, así que un
+lote de veinte actas eran veinte vueltas al diálogo del sistema. Ahora se
+eligen varios de una, o se **sueltan sobre la pantalla**. La cola es
+secuencial a propósito: veinte subidas en paralelo saturan una conexión de
+oficina y convierten un fallo en veinte fallos ilegibles. El panel dice en qué
+archivo va, qué quedó y qué falló, con el motivo.
+
+También se valida el **tamaño** (25 MB), que antes no se miraba, y si la fila
+no se puede crear **se borra el archivo ya subido**: hasta hoy quedaba un
+objeto en Storage que ninguna fila nombraba. Dos archivos con el mismo nombre
+en la misma carpeta ya no chocan: el segundo entra como `Acta (2).pdf`.
+
+Nota de honestidad: subir **no** consume cupo del plan. El cupo cuenta
+documentos *firmados* en el mes, así que no se pone ningún freno antes de
+subir — sería un límite inventado.
+
+**La flecha de volver ya no bota a la raíz.** Era un enlace fijo a `/drive`.
+Ahora lleva a la carpeta del documento, y la cabecera muestra la ruta completa
+(Mis documentos / Actas 2026 / …). Se usa la carpeta del documento en vez de
+"atrás" del navegador para que funcione igual si se llegó por un enlace o
+recargando. Y al crear una carpeta, **se entra sola**: una carpeta se crea para
+meter algo dentro.
+
+**La lista está agrupada por fecha**, como un gestor de archivos: Hoy · Ayer ·
+Esta semana · Este mes · Septiembre 2026. Las fechas se formatean en el
+servidor y fijadas a la hora de Bogotá; antes cada componente formateaba por su
+cuenta en el navegador, y el "hoy" dependía de la zona del equipo.
+
+**Buscador y filtros.** Se busca por nombre en toda la cuenta, sin que las
+tildes estorben ("accion" encuentra "Acción"), con filtros de estado de firma
+y fecha de subida, y orden configurable. Todo vive en la URL: un filtro se
+puede compartir, recargar, y "atrás" deshace el último en vez de salir de la
+pantalla.
+
+**Selección múltiple** con casillas y barra de acciones: mover, descargar o
+enviar a la papelera varios de una vez. Y cada carpeta dice qué tiene dentro
+("4 documentos · 1 en firma") sin tener que entrar.
+
+**Papelera de verdad.** El borrado ya era reversible por dentro, pero no había
+ninguna pantalla para verlo: un acta borrada por error solo se recuperaba
+entrando a la base. Ahora hay **Papelera** en el menú, con Restaurar y Eliminar
+definitivamente, y se vacía sola a los 30 días mediante una tarea programada
+nueva (`purgar-papelera` → función `purge-trash`), porque borrar un archivo de
+Storage no se puede hacer desde SQL. Si la carpeta original ya no existe, el
+documento vuelve a la raíz y se dice así.
+
+### Arreglos que salieron al revisar la base
+- **Borrar una carpeta destruía su contenido ordenado.** `folders.parent_id` es
+  `on delete cascade`: al borrar una carpeta **desaparecían todas sus
+  subcarpetas** y los documentos de todo el subárbol caían a la raíz — tras un
+  `confirm` de una línea que no lo mencionaba. Ahora el contenido se reubica a
+  propósito en la carpeta padre y el diálogo dice exactamente qué se mueve y a
+  dónde.
+- **Un documento en la papelera seguía visible para quien lo tuviera
+  compartido.** La política de lectura venía de la migración 0001 y no mira
+  `deleted_at`; lo único que lo escondía era un filtro del cliente, así que por
+  la API seguía ahí. Corregido en la política y en la consulta.
+- **No había ni un índice** que sostuviera la consulta principal del Drive
+  (`owner_id`, `folder_id`, `created_at`, `deleted_at` sin indexar, igual que
+  `folders.parent_id`). Agregados.
+- **Nombres de carpeta repetidos** entre hermanas: la base nunca tuvo índice
+  único, así que se podían crear dos "Actas" en el mismo sitio. Ahora se avisa.
+- **`window.prompt` y `window.confirm` fuera.** Crear, renombrar y borrar usan
+  diálogos propios: el prompt nativo no podía mostrar el error del servidor
+  --un nombre repetido quedaba en silencio-- y con lector de pantalla o alto
+  contraste queda fuera de todo lo que la aplicación controla.
+
+### Base de datos y despliegue
+- Migración **0021**: extensiones `pg_trgm` y `unaccent`, envoltura inmutable
+  `f_unaccent`, columna generada `name_norm` con índice GIN trigram, los cinco
+  índices de navegación, y la política de lectura de `documents` corregida.
+- Migración **0022**: secreto `purge_trash_secret` generado **dentro de la
+  base** (nunca se copia a las variables de la función), `es_secreto_de_purga`,
+  `purgar_papelera` y la tarea diaria a las 3 a.m. de Colombia.
+- Edge Function **`purge-trash`** desplegada con `verify_jwt` en false; la
+  puerta es el Bearer que valida la base.
+- Probado contra producción: llamada autorizada → `200 {"borrados":0}`, Bearer
+  falso → `401`, y con una fila de prueba de hace 40 días → `{"borrados":1}`
+  con la fila efectivamente borrada y los 9 documentos que ya estaban en la
+  papelera intactos.
+
 ## 2026-10-02
 
 ### La firma desaparecía al colocarla, con el alto contraste activado

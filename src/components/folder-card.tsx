@@ -1,38 +1,68 @@
 "use client";
 
 import Link from "next/link";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteFolder, renameFolder } from "@/app/drive/actions";
 import { MenuItem, RowMenu } from "@/components/row-menu";
+import { NameDialog } from "@/components/name-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Folder, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function FolderCard({ id, name }: { id: string; name: string }) {
+export function FolderCard({
+  id,
+  name,
+  documentos = 0,
+  enFirma = 0,
+  subcarpetas = 0,
+  destinoAlBorrar = "Mis documentos",
+}: {
+  id: string;
+  name: string;
+  /** Documentos directamente dentro, sin contar los de las subcarpetas. */
+  documentos?: number;
+  enFirma?: number;
+  subcarpetas?: number;
+  /** Dónde queda el contenido si se borra la carpeta: su carpeta padre. */
+  destinoAlBorrar?: string;
+}) {
   const router = useRouter();
+  const [renombrando, setRenombrando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function rename() {
-    const next = window.prompt("Nuevo nombre de la carpeta", name);
-    if (!next || next === name) return;
+  function renombrar(nombre: string) {
+    setError(null);
     startTransition(async () => {
-      await renameFolder(id, next);
+      const res = await renameFolder(id, nombre);
+      if (res.error) return setError(res.error);
+      setRenombrando(false);
       router.refresh();
     });
   }
 
-  function remove() {
-    if (
-      !window.confirm(
-        `¿Borrar la carpeta "${name}"?\n\nLos documentos que contenga no se borran: vuelven a Mis documentos.`
-      )
-    )
-      return;
+  function borrar() {
     startTransition(async () => {
-      await deleteFolder(id);
+      const res = await deleteFolder(id);
+      if (res.error) return setError(res.error);
+      setBorrando(false);
       router.refresh();
     });
   }
+
+  const resumen = [
+    documentos > 0 &&
+      `${documentos} ${documentos === 1 ? "documento" : "documentos"}`,
+    subcarpetas > 0 &&
+      `${subcarpetas} ${subcarpetas === 1 ? "subcarpeta" : "subcarpetas"}`,
+    enFirma > 0 && `${enFirma} en firma`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const vacia = documentos === 0 && subcarpetas === 0;
 
   return (
     <li
@@ -42,11 +72,12 @@ export function FolderCard({ id, name }: { id: string; name: string }) {
       )}
     >
       <Folder className="h-4 w-4 shrink-0 text-muted" aria-hidden />
-      <Link
-        href={`/drive?carpeta=${id}`}
-        className="min-w-0 flex-1 truncate py-3 text-sm"
-      >
-        {name}
+      <Link href={`/drive?carpeta=${id}`} className="min-w-0 flex-1 py-2.5">
+        <span className="block truncate text-sm">{name}</span>
+        {/* Qué hay dentro, sin tener que entrar. */}
+        <span className="block truncate text-xs text-muted">
+          {resumen || "Vacía"}
+        </span>
         <span className="absolute inset-0" aria-hidden />
       </Link>
 
@@ -58,7 +89,8 @@ export function FolderCard({ id, name }: { id: string; name: string }) {
                 icon={<Pencil />}
                 onClick={() => {
                   close();
-                  rename();
+                  setError(null);
+                  setRenombrando(true);
                 }}
               >
                 Renombrar
@@ -68,7 +100,8 @@ export function FolderCard({ id, name }: { id: string; name: string }) {
                 danger
                 onClick={() => {
                   close();
-                  remove();
+                  setError(null);
+                  setBorrando(true);
                 }}
               >
                 Borrar carpeta
@@ -77,6 +110,43 @@ export function FolderCard({ id, name }: { id: string; name: string }) {
           )}
         </RowMenu>
       </div>
+
+      <NameDialog
+        open={renombrando}
+        title="Renombrar carpeta"
+        label="Nombre de la carpeta"
+        initial={name}
+        confirmLabel="Guardar"
+        busy={pending}
+        error={error}
+        onSubmit={renombrar}
+        onCancel={() => !pending && setRenombrando(false)}
+      />
+
+      <ConfirmDialog
+        open={borrando}
+        title={`¿Borrar la carpeta "${name}"?`}
+        confirmLabel="Borrar carpeta"
+        tone="danger"
+        busy={pending}
+        onConfirm={borrar}
+        onCancel={() => !pending && setBorrando(false)}
+      >
+        {vacia ? (
+          <p>Está vacía, así que no se pierde nada.</p>
+        ) : (
+          <p>
+            Lo que tiene dentro no se borra: {resumen} pasan a{" "}
+            <strong className="font-medium text-ink">{destinoAlBorrar}</strong>.
+          </p>
+        )}
+        <p>La carpeta en sí no se puede recuperar.</p>
+        {error && (
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+        )}
+      </ConfirmDialog>
     </li>
   );
 }

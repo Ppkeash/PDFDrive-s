@@ -5,7 +5,8 @@ import { ShareDialog, type ShareRow } from "@/components/share-dialog";
 import { DocumentWorkspace } from "@/components/document-workspace";
 import type { SignField } from "@/components/pdf-viewer";
 import type { DocStatus, ShareRole } from "@/types";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download } from "lucide-react";
+import { rutaDeCarpeta, type Carpeta } from "@/lib/carpetas";
 
 export default async function DocumentPage({
   params,
@@ -17,7 +18,7 @@ export default async function DocumentPage({
   const { data: doc } = await supabase
     .from("documents")
     .select(
-      "id, name, mime, status, owner_id, storage_path, signed_path, current_hash, invite_token"
+      "id, name, mime, status, owner_id, storage_path, signed_path, current_hash, invite_token, folder_id"
     )
     .eq("id", params.id)
     .maybeSingle();
@@ -138,6 +139,21 @@ export default async function DocumentPage({
     signed_by: nombrePorCampo.get(f.id) ?? null,
   }));
 
+  // Volver tiene que llevar a donde vive el documento.
+  //
+  // Era un enlace fijo a `/drive`, así que entrar a una carpeta, abrir un
+  // documento y volver dejaba a la persona en la raíz, con la carpeta por
+  // abrir otra vez. Se usa la carpeta del documento en vez de `history.back()`
+  // a propósito: así funciona igual si se llegó por un enlace compartido, por
+  // un correo o recargando la página.
+  const { data: carpetasCrudas } = await supabase
+    .from("folders")
+    .select("id, name, parent_id");
+  const carpetas: Carpeta[] = carpetasCrudas ?? [];
+  const ruta = rutaDeCarpeta(carpetas, doc.folder_id);
+  const carpeta = ruta[ruta.length - 1] ?? null;
+  const volverA = carpeta ? `/drive?carpeta=${carpeta.id}` : "/drive";
+
   const isPdf = doc.mime === "application/pdf";
   const sealed = doc.status === "firmado";
 
@@ -149,13 +165,35 @@ export default async function DocumentPage({
       <header className="sticky top-0 z-40 flex shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <Link
-            href="/drive"
-            aria-label="Volver a mis documentos"
+            href={volverA}
+            aria-label={
+              carpeta ? `Volver a ${carpeta.name}` : "Volver a mis documentos"
+            }
             className="shrink-0 rounded p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div className="min-w-0">
+            {/* Migas: además de volver, dicen dónde está uno. */}
+            <nav
+              aria-label="Ruta"
+              className="flex min-w-0 items-center gap-0.5 text-xs text-muted"
+            >
+              <Link href="/drive" className="shrink-0 hover:text-ink">
+                Mis documentos
+              </Link>
+              {ruta.map((c) => (
+                <span key={c.id} className="flex min-w-0 items-center gap-0.5">
+                  <ChevronRight className="h-3 w-3 shrink-0" aria-hidden />
+                  <Link
+                    href={`/drive?carpeta=${c.id}`}
+                    className="truncate hover:text-ink"
+                  >
+                    {c.name}
+                  </Link>
+                </span>
+              ))}
+            </nav>
             <h1 className="truncate font-display text-lg font-semibold">
               {doc.name}
             </h1>
