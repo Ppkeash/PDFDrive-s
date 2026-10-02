@@ -80,6 +80,10 @@ export function FirmarCliente({
   const [firmando, setFirmando] = useState(false);
   const [listo, setListo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // El visor avisa si no pudo abrir el documento; sin eso, la única salida
+  // que se ofrecía era un enlace al PDF suelto, que no deja firmar.
+  const [fallaPdf, setFallaPdf] = useState<string | null>(null);
+  const [intento, setIntento] = useState(0);
 
   // Tamaños de página en puntos PDF: sin esto la firma aparecería en una
   // esquina al azar en vez de centrada.
@@ -350,20 +354,41 @@ export function FirmarCliente({
             </span>
           </p>
 
-          <p className="mt-3 text-right text-xs text-muted">
-            ¿No se ve el documento?{" "}
-            <a
-              href={datos.pdfUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-seal underline decoration-seal/30 underline-offset-4 hover:decoration-seal"
-            >
-              Ábrelo en otra pestaña
-            </a>
-          </p>
+          {fallaPdf && (
+            <div className="mt-4 rounded border border-danger/40 bg-surface p-4">
+              <h2 className="font-display text-base font-semibold">
+                No se pudo abrir el documento
+              </h2>
+              <p className="mt-1.5 text-sm text-muted">
+                Casi siempre es la conexión. Vuelve a intentarlo; si sigue sin
+                aparecer, descárgalo para leerlo y avísale a quien te envió el
+                enlace — para firmar hace falta verlo aquí.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    setFallaPdf(null);
+                    setIntento((n) => n + 1);
+                  }}
+                  className="inline-flex h-10 items-center justify-center rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90"
+                >
+                  Reintentar
+                </button>
+                <a
+                  href={datos.pdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-10 items-center justify-center rounded border border-line-strong bg-surface px-4 text-sm font-medium transition-colors hover:bg-surface-2"
+                >
+                  Descargarlo para leerlo
+                </a>
+              </div>
+            </div>
+          )}
 
-          <div className="mt-2 flex-1">
+          <div className="mt-5 flex-1">
             <PdfViewer
+              key={intento}
               url={datos.pdfUrl}
               fields={campoFijo}
               pending={pendiente}
@@ -373,6 +398,7 @@ export function FirmarCliente({
               onPagesReady={(p) => {
                 tamanos.current = p;
               }}
+              onError={setFallaPdf}
             />
           </div>
 
@@ -419,7 +445,13 @@ export function FirmarCliente({
               <>
                 <button
                   onClick={() => setPadAbierto(true)}
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90"
+                  disabled={Boolean(fallaPdf)}
+                  title={
+                    fallaPdf
+                      ? "Hay que poder ver el documento para firmarlo"
+                      : undefined
+                  }
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   Firmar documento
                 </button>

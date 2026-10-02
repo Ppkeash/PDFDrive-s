@@ -118,6 +118,14 @@ export default async function DocumentPage({
         : (s.signer_id ? porId.get(s.signer_id) : null) ?? "Cuenta eliminada",
   }));
 
+  // Nombre escrito por quien firmó sin cuenta, para que su recuadro deje de
+  // aparecer como "Sin asignar" teniendo una firma encima.
+  const nombrePorCampo = new Map(
+    signatures
+      .filter((s) => s.signer_kind === "enlace" && s.field_id)
+      .map((s) => [s.field_id as string, s.quien])
+  );
+
   const fields: SignField[] = (fieldRows ?? []).map((f) => ({
     id: f.id,
     page: f.page,
@@ -127,6 +135,7 @@ export default async function DocumentPage({
     h: f.h,
     assigned_email: f.assigned_email,
     signed: signedFieldIds.has(f.id),
+    signed_by: nombrePorCampo.get(f.id) ?? null,
   }));
 
   const isPdf = doc.mime === "application/pdf";

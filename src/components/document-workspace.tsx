@@ -766,7 +766,15 @@ export function DocumentWorkspace({
                       aria-hidden
                     />
                     <span className="min-w-0 flex-1 truncate">
-                      {f.assigned_email ?? "Sin asignar"}
+                      {f.signed_by ?? f.assigned_email ?? "Sin asignar"}
+                      {f.signed_by && (
+                        <span
+                          className="ml-1.5 text-xs text-muted"
+                          title="Firmó por enlace, sin cuenta: el nombre lo escribió esa persona"
+                        >
+                          · por enlace
+                        </span>
+                      )}
                     </span>
                     <span className="tnum shrink-0 font-mono text-xs text-muted">
                       p.{f.page}

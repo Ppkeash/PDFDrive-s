@@ -23,6 +23,13 @@ export type SignField = {
   h: number;
   assigned_email: string | null;
   signed?: boolean;
+  /**
+   * Nombre de quien firmó por enlace, sin cuenta. Un recuadro así no está
+   * asignado a nadie de antemano --lo crea quien firma al colocarlo-- pero
+   * decir "Sin asignar" cuando hay una firma encima es sencillamente falso:
+   * sí se sabe quién firmó, lo escribió esa persona.
+   */
+  signed_by?: string | null;
 };
 
 export type FieldBox = { x: number; y: number; w: number; h: number };
@@ -70,6 +77,7 @@ export function PdfViewer({
   onPagesReady,
   highlightEmail,
   ghost = null,
+  onError,
 }: {
   url: string;
   /**
@@ -95,6 +103,8 @@ export function PdfViewer({
   /** Tamaño de cada página en puntos, para poder centrar cosas desde fuera. */
   onPagesReady?: (pages: { width: number; height: number }[]) => void;
   highlightEmail?: string | null;
+  /** Avisa si el documento no se pudo abrir, para ofrecer salida desde fuera. */
+  onError?: (mensaje: string | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
@@ -117,6 +127,8 @@ export function PdfViewer({
   // Vía ref para no re-cargar el PDF cada vez que el padre recrea la función.
   const onPagesReadyRef = useRef(onPagesReady);
   onPagesReadyRef.current = onPagesReady;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   // La firma en curso puede caer fuera de la pantalla (las páginas son altas):
   // sin esto el usuario traza su firma, pulsa Continuar y no ve nada.
@@ -163,6 +175,7 @@ export function PdfViewer({
         if (cancelled) return;
         setPages(infos);
         onPagesReadyRef.current?.(infos);
+        onErrorRef.current?.(null);
         setLoading(false);
       })
       .catch((err) => {
@@ -171,6 +184,7 @@ export function PdfViewer({
         const detalle =
           err instanceof Error && err.message ? ` (${err.message})` : "";
         setError(`No se pudo abrir el PDF.${detalle}`);
+        onErrorRef.current?.(detalle.trim() || "No se pudo abrir el PDF.");
         setLoading(false);
       });
 
@@ -402,7 +416,7 @@ export function PdfViewer({
               .map((f) => (
                 <Box
                   key={f.id}
-                  label={f.assigned_email ?? "Sin asignar"}
+                  label={f.signed_by ?? f.assigned_email ?? "Sin asignar"}
                   box={boxOf(f)}
                   scale={scale}
                   pageHeight={info.height}

@@ -12,6 +12,28 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### Quien firma por enlace ya aparece con su nombre
+La ficha del documento mostraba "Sin asignar" en el recuadro de alguien que
+acababa de firmar. Era falso: sí se sabe quién firmó, lo escribió esa persona
+al abrir el enlace.
+
+Un recuadro así no está asignado a nadie de antemano —lo crea quien firma al
+colocarlo— pero una vez firmado lleva un nombre. Ahora se muestra, con la
+coletilla **"· por enlace"** al lado, para que no se confunda con alguien
+identificado por su cuenta de Google. Esa diferencia importa y tiene que
+notarse sin preguntar.
+
+### El enlace de respaldo no servía para nada
+Estaba siempre visible y abría el PDF suelto en otra pestaña. Pero si el visor
+falla, leerlo aparte no resuelve nada: **para firmar hace falta verlo aquí**,
+porque la firma se coloca encima del documento.
+
+Ahora solo aparece cuando el visor falla de verdad, y como un aviso con salida:
+**Reintentar** de primero, que es lo que arregla el caso normal —una conexión
+que se cortó— y descargarlo para leerlo como segunda opción, dicho tal cual.
+El botón de firmar queda deshabilitado mientras no se vea el documento: firmar
+a ciegas algo que no se pudo leer no debería ser posible.
+
 ### La verdadera razón de que el invitado no viera el PDF
 El cambio anterior alargó la vida de la URL del archivo, que era un problema
 real, pero no era **el** problema: alguien de fuera seguía sin ver el
