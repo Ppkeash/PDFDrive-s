@@ -10,6 +10,61 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+## 2026-10-03
+
+### La firma pequeña se perdía en un equipo y en otro no: era el remuestreo
+Tercer intento sobre el mismo síntoma, y esta vez con la causa medida. No era
+el tamaño --el arreglo anterior puso suelo al alto y aun así seguía pasando--
+ni el alto contraste. Era **cómo cada equipo encoge la imagen**.
+
+La rúbrica se exporta de un canvas a 2x, con un trazo de unos 4 píxeles. Al
+reducir el recuadro al mínimo, el navegador tiene que meter esa imagen en unos
+pocos píxeles: una reducción de 12x o 15x, donde el trazo pasa a medir menos
+de un tercio de píxel. Simulado el remuestreo paso a paso:
+
+| Cómo se reduce | Tinta que queda |
+|---|---|
+| Muestreo puntual (filtro pobre, sin aceleración por hardware) | **0 %** |
+| Un solo paso con promedio simple | **0 %** |
+| Por mitades sucesivas (lo que se hace ahora) | 10 % |
+| Por mitades + realce medido | **~95 %** |
+
+Ahí está el "a mí se ve y a ella no": con aceleración por hardware el
+navegador usa un filtro bueno y queda un gris tenue; con rasterizado por
+software, o con un filtro más barato, **no queda nada**. Mismo documento,
+mismo tamaño, mismo navegador, resultado distinto según el equipo.
+
+Así que la reducción ya no se le deja al navegador. La vista previa pasó de
+ser un `<img>` estirado a un canvas que pintamos nosotros:
+
+1. **Se baja por mitades sucesivas.** Reducir 15x de un golpe tira los
+   píxeles del trazo; bajar a la mitad cada vez los promedia y conserva la
+   forma.
+2. **Se realza el alfa, midiendo.** Se busca el píxel más opaco que quedó y se
+   sube todo hasta que vuelva a leerse como tinta, en vez de aplicar un factor
+   fijo que se queda corto o se pasa.
+
+De regalo, hereda lo que ya se aprendió con el pad de dibujo: lo que se pinta
+en un canvas no lo recolorea nadie --ni el alto contraste, ni las extensiones
+que oscurecen sitios e invierten las imágenes--. Un `<img>` sí.
+
+### Un panel que dice qué tiene el equipo de quien no ve la firma
+Tres rondas seguidas de "a mí me funciona y a ella no" se resolvieron
+adivinando. Ahora hay un enlace **"¿No se ve bien tu firma?"** junto a los
+botones de tamaño, en la pantalla pública de firma y en el documento abierto,
+que muestra:
+
+- Si el alto contraste del sistema está activo.
+- Si hay una extensión repintando la página (deja rastro en el documento).
+- Densidad de pantalla, ancho de ventana, tema del sistema, navegador.
+- Y una **prueba A/B**: la misma firma al mismo tamaño, reducida por el
+  navegador (A) y reducida por nosotros (B). Si se ve la B y no la A, era el
+  remuestreo. Si no se ve ninguna, el problema está en las dos primeras
+  líneas.
+
+Con un botón para copiar todo, de modo que la próxima vez el diagnóstico
+llegue en un mensaje en vez de en tres rondas de preguntas.
+
 ## 2026-10-02 (noche)
 
 ### La firma desaparecía al hacerla más pequeña: era el alto, sin suelo

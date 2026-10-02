@@ -123,9 +123,14 @@ const PENDING = "__pending__";
 export type GhostField = { page: number; x: number; y: number };
 
 type PageInfo = { width: number; height: number };
-type Drag =
-  | { id: string; mode: "move" | "resize"; startX: number; startY: number; box: FieldBox; page: number }
-  | null;
+type Drag = {
+  id: string;
+  mode: "move" | "resize";
+  startX: number;
+  startY: number;
+  box: FieldBox;
+  page: number;
+} | null;
 
 export function PdfViewer({
   url,
@@ -310,7 +315,7 @@ export function PdfViewer({
   const boxOf = useCallback(
     (f: SignField): FieldBox =>
       overrides[f.id] ?? { x: f.x, y: f.y, w: f.w, h: f.h },
-    [overrides]
+    [overrides],
   );
 
   // La copia local solo manda MIENTRAS se arrastra, para que el recuadro siga
@@ -330,7 +335,7 @@ export function PdfViewer({
     id: string,
     page: number,
     box: FieldBox,
-    mode: "move" | "resize"
+    mode: "move" | "resize",
   ) {
     e.stopPropagation();
     e.preventDefault();
@@ -394,7 +399,7 @@ export function PdfViewer({
 
   function handlePageClick(
     e: React.MouseEvent<HTMLDivElement>,
-    pageIndex: number
+    pageIndex: number,
   ) {
     if (swallowClick.current) {
       swallowClick.current = false;
@@ -424,12 +429,16 @@ export function PdfViewer({
     if (!placing || !onPlace) return;
     onPlace(
       pageIndex + 1,
-      clamp(cssX / scale - DEFAULT_FIELD.w / 2, 0, info.width - DEFAULT_FIELD.w),
+      clamp(
+        cssX / scale - DEFAULT_FIELD.w / 2,
+        0,
+        info.width - DEFAULT_FIELD.w,
+      ),
       clamp(
         info.height - cssY / scale - DEFAULT_FIELD.h / 2,
         0,
-        info.height - DEFAULT_FIELD.h
-      )
+        info.height - DEFAULT_FIELD.h,
+      ),
     );
   }
 
@@ -467,7 +476,7 @@ export function PdfViewer({
               // y la rúbrica desaparecía debajo.
               "hoja-pdf relative shadow-card",
               (placing || pending) && "cursor-crosshair",
-              ghost && "cursor-wait"
+              ghost && "cursor-wait",
             )}
             style={{ width: info.width * scale, height: info.height * scale }}
           >
@@ -614,24 +623,14 @@ function Box({
         !image &&
           cn(
             "border border-dashed bg-transparent",
-            mine ? "border-seal/60" : "border-line-strong/70"
+            mine ? "border-seal/60" : "border-line-strong/70",
           ),
         editable && (dragging ? "cursor-grabbing" : "cursor-grab"),
-        dragging && "ring-2 ring-seal/40"
+        dragging && "ring-2 ring-seal/40",
       )}
     >
       {image ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={image}
-          alt="Tu firma"
-          draggable={false}
-          // `object-fill` y sin relleno: el recuadro ES la firma, y al
-          // estamparla llena ese espacio exacto. Con `contain` la vista previa
-          // mentia -- mostraba la firma encajada dentro, mas pequena y
-          // descentrada respecto de lo que iba a quedar en el PDF.
-          className="pointer-events-none h-full w-full object-fill"
-        />
+        <FirmaPreview src={image} />
       ) : (
         <span
           title={label}
@@ -639,7 +638,7 @@ function Box({
             "pointer-events-none absolute -top-2.5 left-1.5 flex max-w-[85%] items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[9px] font-medium shadow-card",
             mine
               ? "border-seal bg-seal text-seal-ink"
-              : "border-line-strong bg-surface text-muted"
+              : "border-line-strong bg-surface text-muted",
           )}
         >
           <Mail className="h-2.5 w-2.5 shrink-0" />
@@ -662,7 +661,7 @@ function Box({
             aria-label="Cambiar tamaño"
             className={cn(
               "absolute -bottom-4 -right-4 h-[18px] w-[18px] cursor-nwse-resize rounded-full border-2 border-surface shadow-card",
-              mine ? "bg-seal" : "bg-line-strong"
+              mine ? "bg-seal" : "bg-line-strong",
             )}
           />
           {onRemove && (
@@ -681,5 +680,162 @@ function Box({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Reduce la rúbrica al tamaño exacto del lienzo y le devuelve el cuerpo que
+ * el remuestreo le quita. Vive fuera del componente para que el panel de
+ * diagnóstico pueda usar la misma tubería y comparar.
+ */
+export function pintarFirmaReducida(
+  canvas: HTMLCanvasElement,
+  imagen: HTMLImageElement,
+) {
+  const caja = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const ancho = Math.max(1, Math.round(caja.width * dpr));
+  const alto = Math.max(1, Math.round(caja.height * dpr));
+
+  canvas.width = ancho;
+  canvas.height = alto;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, ancho, alto);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  // --- Reducción por mitades ---
+  let fuente: CanvasImageSource = imagen;
+  let fw = imagen.width;
+  let fh = imagen.height;
+
+  while (fw > ancho * 2 && fh > alto * 2) {
+    const mitad = document.createElement("canvas");
+    mitad.width = Math.max(1, Math.floor(fw / 2));
+    mitad.height = Math.max(1, Math.floor(fh / 2));
+    const mctx = mitad.getContext("2d");
+    if (!mctx) break;
+    mctx.imageSmoothingEnabled = true;
+    mctx.imageSmoothingQuality = "high";
+    mctx.drawImage(fuente, 0, 0, fw, fh, 0, 0, mitad.width, mitad.height);
+    fuente = mitad;
+    fw = mitad.width;
+    fh = mitad.height;
+  }
+
+  ctx.drawImage(fuente, 0, 0, fw, fh, 0, 0, ancho, alto);
+
+  // --- Realce del alfa ---
+  //
+  // El trazo original mide unos 4 píxeles; reducido doce o quince veces,
+  // lo que queda es alfa parcial. Cuánta, depende del tamaño y de la
+  // forma concreta de la rúbrica, así que en vez de calcularlo con una
+  // fórmula se **mide**: se busca el píxel más opaco que haya quedado y
+  // se sube todo hasta que ese píxel vuelva a ser tinta.
+  //
+  // Medir en vez de estimar evita las dos formas de equivocarse: quedarse
+  // corto (sigue invisible) y pasarse (una mancha en vez de una firma).
+  const OPACIDAD_OBJETIVO = 235;
+  try {
+    const datos = ctx.getImageData(0, 0, ancho, alto);
+    const px = datos.data;
+
+    let maximo = 0;
+    for (let i = 3; i < px.length; i += 4) {
+      if (px[i] > maximo) maximo = px[i];
+    }
+    if (maximo === 0 || maximo >= OPACIDAD_OBJETIVO) return;
+
+    const realce = Math.min(20, OPACIDAD_OBJETIVO / maximo);
+    for (let i = 3; i < px.length; i += 4) {
+      const a = px[i];
+      // Por debajo de 6 es el halo del suavizado: subirlo veinte veces
+      // emborronaría la firma en vez de dibujarla.
+      px[i] = a > 6 ? Math.min(255, a * realce) : 0;
+    }
+    ctx.putImageData(datos, 0, 0);
+  } catch {
+    // `getImageData` solo falla si el lienzo quedara contaminado, y la
+    // rúbrica es un data URL nuestro. Si pasara, queda la versión sin
+    // realzar, que es exactamente lo que había antes.
+  }
+}
+
+/**
+ * Vista previa de la rúbrica mientras se coloca.
+ *
+ * Era un `<img>` estirado al tamaño del recuadro, y ahí estaba el fallo que a
+ * una persona le hacía desaparecer la firma al achicarla mientras a otra, en
+ * otro equipo, se le veía perfectamente.
+ *
+ * La rúbrica se exporta de un canvas a 2x con un trazo de unos 4 píxeles de
+ * grosor. Cuando el recuadro se reduce al mínimo, el navegador tiene que
+ * encajar esa imagen en unos pocos píxeles: una reducción de 12x o 15x. El
+ * trazo pasa a medir menos de un tercio de píxel, así que lo único que puede
+ * hacer el navegador es repartirlo en transparencia parcial -- en el mejor de
+ * los casos queda al 28% de opacidad, un gris clarísimo. Y *cuánto* queda
+ * depende del remuestreo de cada equipo: con aceleración por hardware se ve
+ * un gris tenue; con rasterizado por software, o con un filtro más pobre, no
+ * queda nada. De ahí que el mismo documento, el mismo tamaño y el mismo
+ * navegador se vean distinto en dos computadores.
+ *
+ * Así que la reducción la hacemos nosotros, no el navegador:
+ *
+ *  1. Se baja por mitades sucesivas. Reducir 15x de un golpe tira la mayor
+ *     parte de los píxeles del trazo; bajar a la mitad cada vez los promedia
+ *     y conserva la forma. Es la diferencia entre una firma gris y una firma.
+ *  2. Se realza el alfa según lo mucho que se haya reducido. Si el trazo
+ *     quedó al 28%, se sube hasta que vuelva a leerse como tinta.
+ *
+ * Y de paso hereda lo que ya aprendimos con el pad de dibujo: lo que se pinta
+ * en un canvas no lo recolorea nadie. Ni el alto contraste del sistema, ni
+ * las extensiones que oscurecen sitios --que invierten las imágenes y
+ * dejarían la tinta blanca sobre la hoja blanca--. Un `<img>` sí.
+ */
+function FirmaPreview({ src }: { src: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [imagen, setImagen] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setImagen(img);
+    img.src = src;
+  }, [src]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imagen) return;
+
+    function pintar() {
+      const canvas = canvasRef.current;
+      if (!canvas || !imagen) return;
+      pintarFirmaReducida(canvas, imagen);
+    }
+
+    pintar();
+
+    // El recuadro cambia de tamaño al escalar, al arrastrar la esquina y al
+    // cambiar el zoom de la página. Observarlo evita tener que enterarse por
+    // props de cada una de esas vías.
+    const observador = new ResizeObserver(pintar);
+    observador.observe(canvas);
+    window.addEventListener("resize", pintar);
+    return () => {
+      observador.disconnect();
+      window.removeEventListener("resize", pintar);
+    };
+  }, [imagen]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      role="img"
+      aria-label="Tu firma"
+      // Llena el recuadro exacto: el recuadro ES la firma, y al estamparla
+      // ocupa ese mismo espacio.
+      className="pointer-events-none block h-full w-full"
+    />
   );
 }

@@ -8,6 +8,7 @@ import { RubricPad } from "@/components/rubric-pad";
 import { StatusChip } from "@/components/status-chip";
 import { ShareDialog, type ShareRow } from "@/components/share-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DatosDePantalla } from "@/components/datos-de-pantalla";
 import { Spinner } from "@/components/spinner";
 import {
   DEFAULT_FIELD,
@@ -591,6 +592,8 @@ export function DocumentWorkspace({
                 <Plus className="h-4 w-4" />
               </button>
             </div>
+
+            <DatosDePantalla className="shrink-0" />
 
             <div className="flex shrink-0 gap-2">
               <button

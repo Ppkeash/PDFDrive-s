@@ -13,6 +13,7 @@ import {
 import { RubricPad } from "@/components/rubric-pad";
 import { Spinner } from "@/components/spinner";
 import { Minus, Plus, ShieldCheck } from "lucide-react";
+import { DatosDePantalla } from "@/components/datos-de-pantalla";
 
 export interface Cupo {
   id: string;
@@ -444,6 +445,9 @@ export function FirmarCliente({
                     leyendo. Para afinarla más, arrastra la esquina.
                   </p>
                 )}
+                <div className="flex justify-center">
+                  <DatosDePantalla />
+                </div>
 
                 <button
                   onClick={confirmarFirma}
