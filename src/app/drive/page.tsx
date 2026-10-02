@@ -99,7 +99,7 @@ export default async function DrivePage({
             {docs.length === 0 && children.length === 0
               ? current
                 ? "Esta carpeta está vacía."
-                : "Todavía no has subido nada."
+                : "Aún no has subido documentos."
               : [
                   docs.length > 0 &&
                     `${docs.length} ${docs.length === 1 ? "documento" : "documentos"}`,

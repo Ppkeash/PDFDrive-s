@@ -131,7 +131,7 @@ export function ShareDialog({
       // y se activa sola cuando se registre con ese mismo correo.
       setNotice(
         res.pending
-          ? `Invitación guardada. ${invited} verá el documento en cuanto cree su cuenta con ese correo.`
+          ? `Invitación registrada. ${invited} podrá ver el documento en cuanto cree su cuenta con ese correo.`
           : `${invited} ya tiene acceso como ${roleLabel(role).toLowerCase()}.`
       );
     });
@@ -215,7 +215,7 @@ export function ShareDialog({
                     htmlFor="share-email"
                     className="text-micro uppercase text-muted"
                   >
-                    Invitar a alguien
+                    Invitar por correo
                   </label>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <input
@@ -248,29 +248,30 @@ export function ShareDialog({
                 </form>
               )}
 
-              {/* Link único: para no invitar de a uno -- se manda una sola vez
-                  por el canal que sea (WhatsApp, correo) y sirve para varios
-                  firmantes. Deja de funcionar solo cuando el documento se
+              {/* Enlace interno: evita invitar persona por persona -- se envía
+                  una sola vez por el canal que sea (WhatsApp, correo) y sirve
+                  para varios firmantes. Deja de funcionar solo cuando el documento se
                   cierra, o antes si se revoca a mano. */}
               {!compact && (
                 <section className="flex flex-col gap-2 border-t border-line pt-5">
                   <div className="flex items-baseline justify-between gap-2">
                     <h3 className="text-micro uppercase text-muted">
-                      Link del equipo
+                      Enlace interno
                     </h3>
                     <span className="text-micro uppercase text-ok">
-                      varias personas
+                      varios firmantes
                     </span>
                   </div>
                   <p className="text-xs text-muted">
                     <strong className="font-medium text-ink">
-                      Para gente de la empresa
+                      Para integrantes de la organización
                     </strong>
-                    : un solo enlace que sirve para todos. Quien lo abre{" "}
+                    : un único enlace válido para todos. Quien lo abre{" "}
                     <strong className="font-medium text-ink">
-                      entra con su cuenta de Google
+                      ingresa con su cuenta de Google
                     </strong>{" "}
-                    y queda como firmante. Sirve hasta que cierres el documento.
+                    y queda registrado como firmante. Permanece activo hasta que
+                    cierres el documento.
                   </p>
 
                   {inviteLink ? (
@@ -318,36 +319,37 @@ export function ShareDialog({
                       className="inline-flex h-10 items-center gap-2 self-start rounded border border-line-strong bg-surface px-3.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-60"
                     >
                       {pending ? <Spinner /> : <Link2 className="h-4 w-4" />}
-                      Generar link
+                      Generar enlace
                     </button>
                   )}
                 </section>
               )}
 
-              {/* Enlace de un solo uso: para quien NO va a crearse cuenta.
-                  Escribe su nombre al abrirlo y firma ahí mismo. Es el caso de
-                  un proveedor o un cliente al que solo hay que pedirle una
-                  firma -- obligarlo a registrarse para eso lo pierde. */}
+              {/* Enlace para firmantes externos: quien NO va a crearse una
+                  cuenta. Escribe su nombre al abrirlo y firma ahí mismo. Es el
+                  caso de un proveedor o un cliente al que solo hay que pedirle
+                  una firma -- obligarlo a registrarse para eso lo pierde. */}
               {!compact && (
                 <section className="flex flex-col gap-2 border-t border-line pt-5">
                   <div className="flex items-baseline justify-between gap-2">
                     <h3 className="text-micro uppercase text-muted">
-                      Enlace sin cuenta
+                      Enlace para firmantes externos
                     </h3>
                     <span className="text-micro uppercase text-wait">
-                      sin registrarse
+                      sin registro
                     </span>
                   </div>
                   <p className="text-xs text-muted">
                     <strong className="font-medium text-ink">
-                      Para gente de fuera
+                      Para firmantes ajenos a la organización
                     </strong>{" "}
-                    que no va a crear cuenta. Un solo enlace para todos: cada
-                    quien escribe su nombre y firma,{" "}
+                    que no van a crear una cuenta. Un único enlace para todos:
+                    cada persona escribe su nombre y ubica su firma donde le
+                    corresponde,{" "}
                     <strong className="font-medium text-ink">
-                      sin registrarse
+                      sin necesidad de registrarse
                     </strong>
-                    . Cada quien coloca su firma donde le corresponde.
+                    .
                   </p>
 
                   {enlaceUnico ? (
@@ -372,12 +374,12 @@ export function ShareDialog({
                         </button>
                       </div>
                       <p className="text-xs text-muted">
-                        Mándalo a todos. Cada quien escribe su nombre, coloca su
-                        firma donde le corresponde y listo. Admite{" "}
+                        Compártelo con todos los firmantes. Cada persona escribe
+                        su nombre y ubica su firma donde le corresponde. Admite{" "}
                         <strong className="font-medium text-ink">
                           {cuantasFirmas} firmas
                         </strong>{" "}
-                        y vence en 2 horas.
+                        y caduca en 2 horas.
                       </p>
                       <button
                         onClick={() => setEnlaceUnico(null)}
@@ -390,7 +392,7 @@ export function ShareDialog({
                     <div className="flex flex-col gap-2.5">
                       <div className="flex flex-col gap-1.5">
                         <span className="text-micro uppercase text-muted">
-                          ¿Cuántas firmas?
+                          Número de firmas
                         </span>
                         <div className="flex gap-1.5">
                           {[10, 20, 50, 100].map((n) => (
@@ -411,9 +413,10 @@ export function ShareDialog({
                       </div>
 
                       <p className="text-xs text-muted">
-                        El enlace se apaga solo al llegar a esa cantidad, o a
-                        las 2 horas, lo que pase primero. Un acta se firma en la
-                        reunión; dejar el enlace vivo más tiempo no suma nada.
+                        El enlace se desactiva al alcanzar esa cantidad o a las
+                        2 horas, según lo que ocurra primero. Un acta se firma
+                        durante la reunión: mantenerlo activo más tiempo no
+                        aporta nada y amplía la exposición.
                       </p>
 
                       <button
@@ -482,7 +485,7 @@ export function ShareDialog({
                               {s.pending && (
                                 <span className="mt-0.5 flex items-center gap-1 text-xs text-wait">
                                   <Clock className="h-3 w-3" aria-hidden />
-                                  Pendiente de que cree su cuenta
+                                  Pendiente de registro
                                 </span>
                               )}
                             </span>
@@ -506,7 +509,7 @@ export function ShareDialog({
 
                   {shares.length === 0 && (
                     <p className="text-sm text-muted">
-                      Todavía no lo has compartido con nadie.
+                      Aún no se ha compartido con nadie.
                     </p>
                   )}
                 </section>

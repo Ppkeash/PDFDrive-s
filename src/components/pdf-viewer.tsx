@@ -396,7 +396,13 @@ export function PdfViewer({
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
             className={cn(
-              "relative shadow-card",
+              // `hoja-pdf` (globals.css) deja fuera esta zona del modo oscuro
+              // y del alto contraste del sistema: la hoja son píxeles de
+              // canvas y no cambia nunca, así que lo que se dibuja encima
+              // tiene que medirse contra blanco. Sin esto, en alto contraste
+              // el recuadro de la firma pendiente se volvía un bloque opaco
+              // y la rúbrica desaparecía debajo.
+              "hoja-pdf relative shadow-card",
               (placing || pending) && "cursor-crosshair",
               ghost && "cursor-wait"
             )}

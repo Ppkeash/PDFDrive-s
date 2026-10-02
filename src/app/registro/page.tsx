@@ -61,11 +61,11 @@ export default function RegistroPage() {
         </div>
         <div className="relative max-w-sm">
           <h2 className="font-display text-2xl font-semibold">
-            Crea tu cuenta con el código de tu equipo.
+            Crea tu cuenta con el código de tu organización.
           </h2>
           <p className="mt-3 text-sm text-muted">
-            El código lo reparte quien administra FirmaDrive donde trabajas. Sin
-            él no se puede crear una cuenta.
+            El código lo entrega quien administra FirmaDrive en tu organización.
+            Sin él no es posible crear una cuenta.
           </p>
         </div>
       </section>
@@ -83,8 +83,8 @@ export default function RegistroPage() {
           {!habilitado ? (
             <>
               <p className="mt-2 text-sm text-muted">
-                Escribe el código que te dieron y el correo con el que vas a
-                entrar.
+                Escribe el código que recibiste y el correo con el que vas a
+                ingresar.
               </p>
 
               <form onSubmit={handleCanje} className="mt-8 flex flex-col gap-4">
@@ -93,7 +93,7 @@ export default function RegistroPage() {
                   label="Código de invitación"
                   value={codigo}
                   onChange={setCodigo}
-                  placeholder="el que te dieron en el trabajo"
+                  placeholder="Código entregado por tu organización"
                   autoComplete="off"
                 />
                 <Campo
@@ -119,7 +119,7 @@ export default function RegistroPage() {
           ) : (
             <>
               <p className="mt-2 text-sm text-muted">
-                Listo. Ahora entra con la cuenta de Google de{" "}
+                Código verificado. Ingresa con la cuenta de Google de{" "}
                 <strong className="font-medium text-ink">{email}</strong>.
               </p>
 
@@ -131,7 +131,7 @@ export default function RegistroPage() {
               </button>
 
               <p className="mt-4 text-sm text-muted">
-                Tiene que ser ese mismo correo. Si entras con otra cuenta de
+                Debe ser ese mismo correo. Si ingresas con otra cuenta de
                 Google, el registro se rechaza.
               </p>
 

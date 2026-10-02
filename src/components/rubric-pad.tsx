@@ -38,7 +38,7 @@ export function RubricPad({
   onCancel,
   onConfirm,
   busy,
-  title = "Dibuja tu firma",
+  title = "Traza tu firma",
   confirmLabel = "Firmar documento",
   busyLabel = "Firmando…",
 }: {
@@ -309,9 +309,10 @@ export function RubricPad({
         <div className="p-5">
           <div
             className="rounded border border-line-strong"
-            // Declarar el esquema de color ayuda con el modo oscuro forzado del
-            // navegador; el papel de verdad lo pinta el canvas.
-            style={{ colorScheme: "light" }}
+            // Declarar el esquema de color ayuda con el modo oscuro forzado
+            // del navegador, y `forcedColorAdjust` con el alto contraste del
+            // sistema; el papel de verdad lo pinta el canvas.
+            style={{ colorScheme: "light", forcedColorAdjust: "none" }}
           >
             <canvas
               ref={canvasRef}

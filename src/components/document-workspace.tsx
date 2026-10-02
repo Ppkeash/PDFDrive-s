@@ -307,7 +307,7 @@ export function DocumentWorkspace({
   async function addField(page: number, x: number, y: number) {
     setError(null);
     const email = assignTo.trim().toLowerCase();
-    if (!email) return setError("Elige a quién le toca firmar este campo.");
+    if (!email) return setError("Selecciona quién debe firmar este campo.");
 
     // El recuadro aparece al instante donde se hizo clic y bloquea los
     // siguientes: antes, mientras se guardaba no pasaba nada visible y dos
@@ -555,15 +555,15 @@ export function DocumentWorkspace({
           // de confirmar tiene que seguir a mano.
           <div className="sticky top-[76px] z-20 mb-3 flex flex-wrap items-center gap-3 rounded border border-seal/30 border-l-2 border-l-seal bg-seal-soft px-3 py-2.5 shadow-pop">
             <p className="flex-1 text-sm text-seal">
-              Arrastra tu firma donde quieras, o haz clic en otro punto del
-              documento. Con − y + le ajustas el tamaño.
+              Ubica tu firma donde corresponda, o haz clic en otro punto del
+              documento. Con − y + ajustas el tamaño.
             </p>
 
             <div className="flex shrink-0 items-center gap-1.5">
               <button
                 onClick={() => escalarPending(0.85)}
                 disabled={busy}
-                aria-label="Hacer la firma más pequeña"
+                aria-label="Reducir el tamaño de la firma"
                 className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-60"
               >
                 <Minus className="h-4 w-4" />
@@ -572,7 +572,7 @@ export function DocumentWorkspace({
               <button
                 onClick={() => escalarPending(1.18)}
                 disabled={busy}
-                aria-label="Hacer la firma más grande"
+                aria-label="Aumentar el tamaño de la firma"
                 className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" />
@@ -674,10 +674,10 @@ export function DocumentWorkspace({
           {!sealed && (
             <p className="text-sm text-muted">
               {noFields
-                ? "Todavía no hay campos. Marca sobre el documento dónde va cada firma."
+                ? "Aún no hay campos. Marca sobre el documento dónde corresponde cada firma."
                 : pendingCount === 0
                   ? canEdit(role)
-                    ? "Todo firmado. El documento sigue abierto: puedes invitar a alguien más o cerrarlo."
+                    ? "Las firmas están completas. El documento sigue abierto: puedes invitar a más firmantes o cerrarlo."
                     : "Todos los campos están firmados."
                   : `Faltan ${pendingCount} de ${fields.length} firmas.`}
             </p>
@@ -699,7 +699,9 @@ export function DocumentWorkspace({
 
               {placing && (
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-muted">¿Quién firma aquí?</span>
+                  <span className="text-xs text-muted">
+                    Firmante de este campo
+                  </span>
                   <input
                     list="firmantes"
                     value={assignTo}
@@ -770,7 +772,7 @@ export function DocumentWorkspace({
                       {f.signed_by && (
                         <span
                           className="ml-1.5 text-xs text-muted"
-                          title="Firmó por enlace, sin cuenta: el nombre lo escribió esa persona"
+                          title="Firmó mediante enlace, sin cuenta: el nombre lo registró esa persona"
                         >
                           · por enlace
                         </span>
@@ -828,13 +830,13 @@ export function DocumentWorkspace({
 
             {canSign && !pending && !signableField && (
               <p className="text-xs text-muted">
-                Trazas tu firma y luego la colocas donde quieras.
+                Primero trazas tu firma y luego la ubicas donde corresponda.
               </p>
             )}
 
             {/* Cerrar es un acto aparte de firmar: mientras el documento siga
-                abierto se puede invitar a más gente. Y lo cierra quien manda,
-                no el último que firme. */}
+                abierto se puede invitar a más firmantes. Y lo cierra quien
+                tiene la responsabilidad, no el último que firme. */}
             {!sealed && allSigned && canEdit(role) && (
               <>
                 <button
@@ -844,8 +846,8 @@ export function DocumentWorkspace({
                   <Lock className="h-4 w-4" /> Cerrar documento
                 </button>
                 <p className="text-xs text-muted">
-                  Hasta que lo cierres puedes seguir invitando gente a firmar.
-                  Al cerrarlo se sella y ya no admite más firmas.
+                  Mientras no lo cierres puedes seguir invitando firmantes. Al
+                  cerrarlo se sella y no admite más firmas.
                 </p>
               </>
             )}
@@ -860,10 +862,10 @@ export function DocumentWorkspace({
             {!canSign && !sealed && !allSigned && (
               <p className="text-sm text-muted">
                 {!roleCanSign(role)
-                  ? "Tienes permiso de lectura: puedes ver y descargar, pero no firmar. Pídele al dueño que te cambie el permiso a firmante."
+                  ? "Tienes permiso de lectura: puedes consultar y descargar, pero no firmar. Solicita al propietario que cambie tu permiso a firmante."
                   : alreadySigned
-                    ? "Ya firmaste. Falta que firmen los demás."
-                    : "El dueño todavía no te ha asignado un campo de firma."}
+                    ? "Ya firmaste. Faltan las firmas de los demás."
+                    : "El propietario aún no te ha asignado un campo de firma."}
               </p>
             )}
 
@@ -1053,7 +1055,7 @@ export function DocumentWorkspace({
             </p>
             <p>
               Esto <strong>no cierra</strong> el documento: seguirá abierto para
-              invitar a más gente hasta que el propietario lo cierre.
+              invitar a más firmantes hasta que el propietario lo cierre.
             </p>
           </>
         )}
@@ -1067,7 +1069,7 @@ export function DocumentWorkspace({
         title={
           signableField?.assigned_email
             ? `Firma de ${signableField.assigned_email}`
-            : "Dibuja tu firma"
+            : "Traza tu firma"
         }
         // Trazar nunca es el acto final: o hay que colocar la firma, o queda
         // el aviso de confirmación. El botón no debe prometer que ya se firmó.
@@ -1118,7 +1120,7 @@ function VerifyBox({ result }: { result: VerifyResult }) {
         )}
       >
         <ShieldCheck className="h-4 w-4 shrink-0" />
-        {valid ? "Firma válida" : "La verificación no pasó"}
+        {valid ? "Firma válida" : "La firma no se pudo validar"}
       </p>
 
       {result.reason && (
@@ -1129,7 +1131,7 @@ function VerifyBox({ result }: { result: VerifyResult }) {
         <dl className="mt-3 flex flex-col gap-1">
           <Check2 label="El documento no se modificó" ok={sig.digestMatch} />
           <Check2 label="Firma del certificado" ok={sig.signatureValid} />
-          <Check2 label="Cubre el archivo entero" ok={sig.coversWholeFile} />
+          <Check2 label="Cubre el archivo completo" ok={sig.coversWholeFile} />
         </dl>
       )}
 

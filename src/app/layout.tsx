@@ -59,6 +59,15 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/*
+          Las extensiones que oscurecen sitios (Dark Reader y parecidas)
+          invierten también las imágenes, y la rúbrica es una imagen: tinta
+          oscura invertida queda blanca sobre la hoja blanca del PDF, es decir
+          invisible. FirmaDrive ya trae su propio modo oscuro --el interruptor
+          de la cabecera--, así que no hace falta que nadie lo repinte por
+          encima.
+        */}
+        <meta name="darkreader-lock" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-dvh font-sans text-base antialiased">

@@ -10,6 +10,42 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+## 2026-10-02
+
+### La firma desaparecía al colocarla, con el alto contraste activado
+Reportado otra vez después de arreglar el tamaño, y en un equipo distinto: la
+rúbrica se traza, se coloca sobre el documento y no se ve.
+
+Es el mismo mecanismo que dejaba el pad de dibujo en negro. Con el **alto
+contraste del sistema** (Windows, temas de contraste) el navegador reemplaza
+cualquier color de fondo puesto por CSS por el color del sistema. La hoja del
+PDF es inmune porque son píxeles de un canvas; el recuadro translúcido que
+lleva la firma mientras se coloca, no. Ese recuadro pasaba a ser un bloque
+opaco oscuro sobre la hoja blanca, y la tinta de la rúbrica —que es una
+imagen, y las imágenes no se recolorean— quedaba oscura sobre oscuro.
+
+La zona del documento ahora se muestra con sus colores de verdad
+(`forced-color-adjust: none` y tokens de tema claro fijos en `.hoja-pdf`):
+mostrar un documento repintado sería mostrar algo distinto de lo que se va a
+firmar. El resto de la aplicación sigue respetando el alto contraste, que es
+donde sirve.
+
+De paso, la página declara `darkreader-lock`: las extensiones que oscurecen
+sitios invierten también las imágenes, y una rúbrica invertida queda blanca
+sobre la hoja blanca. FirmaDrive ya trae su propio modo oscuro.
+
+### Redacción formal en lo que ve gente de otra empresa
+"Para gente de fuera", "mándalo a todos", "el enlace se apaga solo", "pídele
+uno nuevo". Describía bien, pero un enlace de firma se le manda a un cliente o
+a un proveedor, y ahí ese registro no corresponde.
+
+Reescrito el texto de compartir (**Enlace interno** para la organización,
+**Enlace para firmantes externos** para quien no va a crear cuenta), los diez
+avisos de la pantalla pública de firma, los permisos, el registro con código,
+el login y los textos del documento abierto. Mismo significado, sin
+coloquialismos: "solicita" en vez de "pídele", "se desactiva" en vez de "se
+apaga solo", "firmantes" en vez de "gente".
+
 ## 2026-10-01
 
 ### Quien firma por enlace ya aparece con su nombre

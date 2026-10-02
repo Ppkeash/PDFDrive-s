@@ -12,49 +12,50 @@ export const dynamic = "force-dynamic";
 
 const MOTIVOS: Record<string, { titulo: string; detalle: string }> = {
   no_existe: {
-    titulo: "Este enlace no funciona",
+    titulo: "El enlace no es válido",
     detalle:
-      "Puede estar mal copiado o haber sido desactivado. Pídele uno nuevo a quien te lo envió.",
+      "Puede estar mal copiado o haber sido desactivado. Solicita uno nuevo a quien te lo envió.",
   },
   ya_usado: {
-    titulo: "Este enlace ya se usó",
+    titulo: "El enlace ya fue utilizado",
     detalle:
-      "Sirve una sola vez y alguien ya firmó con él. Si necesitas firmar otra vez, pide un enlace nuevo.",
+      "Es válido una sola vez y ya se registró una firma con él. Si necesitas firmar de nuevo, solicita otro enlace.",
   },
   revocado: {
-    titulo: "Este enlace fue desactivado",
-    detalle: "Quien lo envió lo dio de baja. Pídele uno nuevo.",
+    titulo: "El enlace fue desactivado",
+    detalle: "Quien lo envió lo desactivó. Solicita uno nuevo.",
   },
   vencido: {
-    titulo: "Este enlace venció",
-    detalle: "Pídele uno nuevo a quien te lo envió.",
+    titulo: "El enlace caducó",
+    detalle: "Solicita uno nuevo a quien te lo envió.",
   },
   documento_cerrado: {
     titulo: "El documento ya está cerrado",
-    detalle: "Se firmó por completo y ya no admite más firmas.",
+    detalle: "Se firmó por completo y no admite más firmas.",
   },
   lista_completa: {
-    titulo: "Ya firmaron todos",
+    titulo: "Las firmas están completas",
     detalle:
-      "Todas las personas de la lista firmaron este documento. Si creías que faltaba tu firma, avísale a quien te envió el enlace.",
+      "Todas las personas de la lista firmaron el documento. Si consideras que falta tu firma, comunícate con quien te envió el enlace.",
   },
   cupo_lleno: {
-    titulo: "Este enlace ya se llenó",
+    titulo: "El enlace alcanzó su límite de firmas",
     detalle:
-      "Recibió todas las firmas que admitía. Si faltaba la tuya, pídele uno nuevo a quien te lo envió.",
+      "Registró todas las firmas que admitía. Si falta la tuya, solicita un enlace nuevo a quien te lo envió.",
   },
   sin_espacios: {
-    titulo: "Ya no quedan espacios",
+    titulo: "No quedan espacios de firma",
     detalle:
-      "Se ocuparon todos los espacios de firma de este documento. Avísale a quien te envió el enlace.",
+      "Se ocuparon todos los espacios de firma del documento. Comunícate con quien te envió el enlace.",
   },
   campo_ya_firmado: {
     titulo: "Ese espacio ya está firmado",
-    detalle: "Alguien firmó ahí antes. Pide un enlace nuevo si hace falta.",
+    detalle:
+      "Otra persona firmó allí antes. Solicita un enlace nuevo si es necesario.",
   },
   pdf_no_disponible: {
     titulo: "No se pudo abrir el documento",
-    detalle: "Vuelve a intentarlo en un momento.",
+    detalle: "Inténtalo de nuevo en un momento.",
   },
 };
 

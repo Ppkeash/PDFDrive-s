@@ -190,14 +190,14 @@ export function FirmarCliente({
       setListo(true);
     } catch {
       setFirmando(false);
-      setError("No se pudo conectar. Revisa tu internet y vuelve a intentar.");
+      setError("No se pudo conectar. Verifica tu conexión e inténtalo de nuevo.");
     }
   }
 
   if (listo) {
     return (
       <Cartel
-        titulo="Listo, quedó firmado"
+        titulo="Documento firmado"
         detalle={`Tu firma quedó registrada en "${datos.documento}" a nombre de ${nombre.trim()}.`}
         ok
       />
@@ -218,10 +218,11 @@ export function FirmarCliente({
 
       {!identificado && conLista ? (
         <section className="mt-8 rounded-lg border border-line bg-surface p-6">
-          <h2 className="font-display text-lg font-semibold">¿Quién eres?</h2>
+          <h2 className="font-display text-lg font-semibold">
+            Identificación del firmante
+          </h2>
           <p className="mt-1.5 text-sm text-muted">
-            Escoge tu nombre de la lista. Cada nombre se puede usar una sola
-            vez.
+            Selecciona tu nombre en la lista. Cada nombre admite una sola firma.
           </p>
 
           <ul className="mt-5 flex flex-col gap-1.5">
@@ -247,7 +248,7 @@ export function FirmarCliente({
                     <span className="min-w-0 truncate">{c.nombre}</span>
                     {c.firmado && (
                       <span className="shrink-0 text-micro uppercase text-muted">
-                        ya firmó
+                        firmado
                       </span>
                     )}
                   </button>
@@ -267,19 +268,19 @@ export function FirmarCliente({
       ) : !identificado && unaSolaPersona ? (
         <section className="mt-8 rounded-lg border border-line bg-surface p-6">
           <h2 className="font-display text-lg font-semibold">
-            Este documento es para ti
+            Este documento está dirigido a ti
           </h2>
           <p className="mt-1.5 text-sm text-muted">
-            Quien te lo envió preparó la firma a nombre de{" "}
+            Quien te lo envió preparó el espacio de firma a nombre de{" "}
             <strong className="font-medium text-ink">{cupos[0].nombre}</strong>.
-            Si no eres tú, avísale antes de continuar.
+            Si no eres esa persona, comunícaselo antes de continuar.
           </p>
 
           <button
             onClick={() => setIdentificado(true)}
             className="mt-5 inline-flex h-11 w-full items-center justify-center rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90"
           >
-            Sí, soy yo — ver el documento
+            Confirmar y ver el documento
           </button>
         </section>
       ) : !identificado ? (
@@ -288,8 +289,8 @@ export function FirmarCliente({
             ¿Quién va a firmar?
           </h2>
           <p className="mt-1.5 text-sm text-muted">
-            Escribe tu nombre y apellido. Es el que va a quedar registrado junto
-            a tu firma.
+            Escribe tu nombre y apellido. Es el que quedará registrado junto a
+            tu firma.
           </p>
 
           <form
@@ -314,7 +315,7 @@ export function FirmarCliente({
                 minLength={3}
                 maxLength={120}
                 autoComplete="name"
-                placeholder="Como aparece en tu cédula"
+                placeholder="Como aparece en tu documento de identidad"
                 className="h-11 rounded border border-line-strong bg-surface px-3 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-seal"
               />
             </div>
@@ -338,17 +339,17 @@ export function FirmarCliente({
             <span>
               {pendiente ? (
                 <>
-                  Arrástrala hasta el renglón que te corresponde y ajústale
-                  el tamaño si hace falta. Después no se puede mover desde este
-                  enlace.
+                  Ubícala en el renglón que te corresponde y ajusta el tamaño
+                  si es necesario. Una vez confirmada no podrás moverla desde
+                  este enlace.
                 </>
               ) : (
                 <>
-                  Vas a firmar como{" "}
+                  Firmarás como{" "}
                   <strong className="font-medium text-ink">
                     {nombre.trim()}
                   </strong>
-                  . Lee el documento antes de firmar.
+                  . Revisa el documento antes de firmar.
                 </>
               )}
             </span>
@@ -360,9 +361,9 @@ export function FirmarCliente({
                 No se pudo abrir el documento
               </h2>
               <p className="mt-1.5 text-sm text-muted">
-                Casi siempre es la conexión. Vuelve a intentarlo; si sigue sin
-                aparecer, descárgalo para leerlo y avísale a quien te envió el
-                enlace — para firmar hace falta verlo aquí.
+                Generalmente se debe a la conexión. Inténtalo de nuevo; si
+                sigue sin aparecer, descárgalo para leerlo e informa a quien te
+                envió el enlace: para firmar es necesario visualizarlo aquí.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
@@ -380,7 +381,7 @@ export function FirmarCliente({
                   rel="noreferrer"
                   className="inline-flex h-10 items-center justify-center rounded border border-line-strong bg-surface px-4 text-sm font-medium transition-colors hover:bg-surface-2"
                 >
-                  Descargarlo para leerlo
+                  Descargar para leerlo
                 </a>
               </div>
             </div>
@@ -409,7 +410,7 @@ export function FirmarCliente({
                   <button
                     onClick={() => escalar(0.85)}
                     disabled={firmando}
-                    aria-label="Hacer la firma más pequeña"
+                    aria-label="Reducir el tamaño de la firma"
                     className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-50"
                   >
                     <Minus className="h-4 w-4" />
@@ -418,7 +419,7 @@ export function FirmarCliente({
                   <button
                     onClick={() => escalar(1.18)}
                     disabled={firmando}
-                    aria-label="Hacer la firma más grande"
+                    aria-label="Aumentar el tamaño de la firma"
                     className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-50"
                   >
                     <Plus className="h-4 w-4" />
@@ -431,14 +432,14 @@ export function FirmarCliente({
                   className="inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
                   {firmando && <Spinner />}
-                  {firmando ? "Firmando…" : "Confirmar firma aquí"}
+                  {firmando ? "Firmando…" : "Confirmar la firma en esta posición"}
                 </button>
                 <button
                   onClick={() => setPendiente(null)}
                   disabled={firmando}
                   className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink disabled:opacity-50"
                 >
-                  Volver a dibujarla
+                  Trazar la firma de nuevo
                 </button>
               </>
             ) : (
@@ -448,7 +449,7 @@ export function FirmarCliente({
                   disabled={Boolean(fallaPdf)}
                   title={
                     fallaPdf
-                      ? "Hay que poder ver el documento para firmarlo"
+                      ? "Es necesario visualizar el documento para poder firmarlo"
                       : undefined
                   }
                   className="inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-seal px-4 text-sm font-medium text-seal-ink transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -462,7 +463,9 @@ export function FirmarCliente({
                   }}
                   className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink"
                 >
-                  {conLista ? "Escoger otro nombre" : `No soy ${nombre.trim()}`}
+                  {conLista
+                    ? "Seleccionar otro nombre"
+                    : `No soy ${nombre.trim()}`}
                 </button>
               </>
             )}
@@ -483,7 +486,7 @@ export function FirmarCliente({
         open={padAbierto}
         onCancel={() => setPadAbierto(false)}
         onConfirm={alTrazar}
-        title={`Dibuja tu firma, ${nombre.trim().split(" ")[0]}`}
+        title={`Traza tu firma, ${nombre.trim().split(" ")[0]}`}
         confirmLabel="Continuar"
       />
     </div>

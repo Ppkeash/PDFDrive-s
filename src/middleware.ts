@@ -16,8 +16,8 @@ import {
 // que no indexen nada. Taparlo con un 404 sería contraproducente.
 const GATE_EXEMPT = new Set(["/robots.txt"]);
 
-// Los enlaces de firma se mandan a gente de fuera -- un proveedor, un cliente,
-// alguien que no trabaja aquí. Si la puerta se enciende, esto tiene que seguir
+// Los enlaces de firma se envían a firmantes externos -- un proveedor, un
+// cliente, alguien ajeno a la organización. Si la puerta se enciende, esto tiene que seguir
 // abriendo o el enlace deja de servir para lo único que sirve. El token es su
 // propia credencial, así que no se está abriendo nada más.
 const GATE_EXEMPT_PREFIX = ["/firmar/"];

@@ -21,22 +21,22 @@ const PASSWORD_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PASSWORD_AUTH === "true"
 function explain(raw: string, status?: number): string {
   const m = raw.toLowerCase();
   if (status === 429 || m.includes("rate limit") || m.includes("too many"))
-    return "Demasiados intentos seguidos. Espera un minuto y vuelve a probar.";
+    return "Demasiados intentos seguidos. Espera un minuto e inténtalo de nuevo.";
   if (m.includes("invalid login credentials"))
     return "Email o contraseña incorrectos.";
   // El registro está restringido (ver migración 0012): entrar con una cuenta
   // desconocida intenta crear usuario y el trigger lo aborta. GoTrue lo
   // devuelve como error genérico de base de datos.
   if (m.includes("signups not allowed") || m.includes("signup_disabled"))
-    return "Esa cuenta no tiene acceso. Pídele al administrador que te la habilite.";
+    return "Esa cuenta no tiene acceso. Solicita al administrador que la habilite.";
   if (m.includes("database error") && m.includes("new user"))
     return "Esa cuenta no está habilitada. Si tienes un código de invitación, usa “Crear cuenta”.";
   if (m.includes("email logins are disabled"))
-    return "El acceso con contraseña está desactivado ahora mismo.";
+    return "El acceso con contraseña está desactivado por el momento.";
   if (m.includes("provider is not enabled") || m.includes("unsupported provider"))
     return "El acceso con Google no está configurado.";
   if (m.includes("email address") && m.includes("invalid"))
-    return "Ese email no parece válido.";
+    return "Ese correo no es válido.";
   return raw;
 }
 

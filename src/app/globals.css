@@ -144,3 +144,39 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =====================================================================
+   La hoja del PDF no se repinta
+   La página de un PDF son píxeles de canvas: ni el modo oscuro, ni el alto
+   contraste del sistema, ni las extensiones que oscurecen sitios la tocan.
+   Siempre es una hoja blanca. Todo lo que se dibuja ENCIMA (recuadros de
+   firma, etiquetas, la rúbrica que se está colocando) sí lo tocan, y ahí
+   nacía el fallo: en alto contraste el navegador cambia cualquier fondo de
+   CSS por el color de sistema, así que el recuadro translúcido de la firma
+   pasaba a ser un bloque opaco sobre la hoja -- y la tinta de la rúbrica,
+   que es una imagen y no se recolorea, quedaba oscura sobre oscuro. La
+   persona trazaba su firma, la colocaba y no veía nada.
+   Reportado por alguien firmando con alto contraste activado.
+   ===================================================================== */
+.hoja-pdf {
+  /* Tokens de tema claro fijos: lo que va sobre la hoja se mide contra
+     blanco, no contra el fondo de la aplicación. */
+  --surface: 255 255 255;
+  --surface-2: 250 247 246;
+  --ink: 28 20 22;
+  --muted: 110 95 99;
+  --line: 228 220 221;
+  --line-strong: 209 197 199;
+  --seal: 126 43 60;
+  --seal-ink: 255 255 255;
+  --seal-soft: 242 228 231;
+
+  color-scheme: light;
+}
+
+/* El documento se muestra con sus colores, que es el punto de un documento:
+   cualquier otra cosa sería mostrar algo distinto de lo que se va a firmar. */
+.hoja-pdf,
+.hoja-pdf * {
+  forced-color-adjust: none;
+}
