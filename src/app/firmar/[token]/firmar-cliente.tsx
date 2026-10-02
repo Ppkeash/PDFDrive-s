@@ -445,9 +445,7 @@ export function FirmarCliente({
                     leyendo. Para afinarla más, arrastra la esquina.
                   </p>
                 )}
-                <div className="flex justify-center">
-                  <DatosDePantalla />
-                </div>
+                <DatosDePantalla className="self-center" />
 
                 <button
                   onClick={confirmarFirma}

@@ -20,8 +20,31 @@ import { Check, Copy, HelpCircle, X } from "lucide-react";
  * tamaño: algo está recoloreando o invirtiendo la página, y lo que hay que
  * mirar son las dos primeras líneas de la lista.
  */
+/**
+ * Encendido fijo, para dejarlo puesto en una instalación concreta.
+ * Se lee en tiempo de compilación, así que apagado no cuesta ni un byte de
+ * lógica en el navegador.
+ */
+const ENCENDIDO = process.env.NEXT_PUBLIC_DIAGNOSTICO_PANTALLA === "true";
+
 export function DatosDePantalla({ className }: { className?: string }) {
   const [abierto, setAbierto] = useState(false);
+  const [visible, setVisible] = useState(ENCENDIDO);
+
+  // Encendido por enlace: basta con añadirle `?diag=1` a la dirección que se
+  // le pasa a la persona. Es la vía útil de verdad -- se enciende para un
+  // caso concreto, en el momento, sin volver a desplegar ni tocar nada.
+  //
+  // Se mira `window.location` dentro de un efecto, y no `useSearchParams`,
+  // para no arrastrar a esta pantalla el límite de Suspense que esa pieza
+  // impone en el renderizado estático.
+  useEffect(() => {
+    if (ENCENDIDO) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("diag")) setVisible(true);
+  }, []);
+
+  if (!visible) return null;
 
   return (
     <>

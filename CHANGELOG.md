@@ -10,6 +10,22 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+## 2026-10-03 (segunda)
+
+### El panel de diagnóstico queda, apagado
+Hizo su trabajo --sirvió para cerrar el caso de la firma que desaparecía-- y
+no tiene por qué estar a la vista de todo el que firme. El enlace "¿No se ve
+bien tu firma?" ya no aparece, pero el código se queda entero y se enciende de
+dos formas:
+
+- **`?diag=1` en la dirección.** La útil: se le manda el enlace así a la
+  persona concreta que esté viendo algo raro, en el momento, sin desplegar
+  nada ni tocar configuración.
+- **`NEXT_PUBLIC_DIAGNOSTICO_PANTALLA=true`**, si alguna vez conviene dejarlo
+  puesto en una instalación entera.
+
+Apagado no cuesta nada: la condición se resuelve al compilar.
+
 ## 2026-10-03
 
 ### La firma pequeña se perdía en un equipo y en otro no: era el remuestreo
