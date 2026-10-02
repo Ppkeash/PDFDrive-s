@@ -168,7 +168,9 @@ export function PdfViewer({
       .catch((err) => {
         if (cancelled) return;
         console.error("pdf load", err);
-        setError("No se pudo abrir el PDF.");
+        const detalle =
+          err instanceof Error && err.message ? ` (${err.message})` : "";
+        setError(`No se pudo abrir el PDF.${detalle}`);
         setLoading(false);
       });
 

@@ -350,7 +350,19 @@ export function FirmarCliente({
             </span>
           </p>
 
-          <div className="mt-5 flex-1">
+          <p className="mt-3 text-right text-xs text-muted">
+            ¿No se ve el documento?{" "}
+            <a
+              href={datos.pdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-seal underline decoration-seal/30 underline-offset-4 hover:decoration-seal"
+            >
+              Ábrelo en otra pestaña
+            </a>
+          </p>
+
+          <div className="mt-2 flex-1">
             <PdfViewer
               url={datos.pdfUrl}
               fields={campoFijo}

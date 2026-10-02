@@ -71,7 +71,17 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Todo excepto estáticos e imágenes.
-    "/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Todo excepto estáticos.
+    //
+    // La lista solo tenía imágenes, y eso rompía la firma por enlace: el visor
+    // de PDF carga `/pdf.worker.min.mjs`, el middleware lo trataba como una
+    // ruta privada y le devolvía una redirección al login a quien no tuviera
+    // sesión. El visor recibía HTML donde esperaba código y moría con un
+    // escueto "No se pudo abrir el PDF".
+    //
+    // Pasaba desapercibido porque pdf.js, al no poder cargar el worker, cae a
+    // un modo de respaldo que corre en el hilo principal: en un equipo rápido
+    // el documento igual aparecía.
+    "/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp|ico|mjs|js|css|map|json|txt|woff|woff2|ttf|otf)$).*)",
   ],
 };
