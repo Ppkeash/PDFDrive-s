@@ -10,6 +10,55 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-09-23
 
+## 2026-10-02 (noche)
+
+### La firma desaparecía al hacerla más pequeña: era el alto, sin suelo
+Reportado otra vez, ahora con video. La causa es aritmética y se puede
+reproducir en papel, sin depender del equipo de nadie.
+
+El cálculo de "hacer más pequeña" solo le ponía suelo al **ancho**:
+
+    const w = Math.min(400, Math.max(24, box.w * factor));
+    const h = (w / box.w) * box.h;
+
+Una rúbrica trazada a mano sale ancha --la proporción típica es 6:1-- así que
+al pulsar **−** repetidamente el ancho se frenaba en 24 puntos mientras el
+alto, que no tenía suelo ninguno, seguía bajando: de 55 puntos a **menos de 4**,
+algo más de un milímetro. En pantalla, una raya de dos píxeles. Y en el PDF
+habría quedado estampada igual de ilegible.
+
+A eso se sumaban dos cosas que tapaban lo poco que quedaba:
+
+- **El recuadro se comía la firma.** El contorno era un `border` de 2 píxeles,
+  y un borde se dibuja *dentro* de la caja: en una firma de 8 píxeles de alto,
+  el borde ocupaba 4 de arriba y abajo; a 4 píxeles, la ocupaba entera. Ahora
+  el contorno es un `outline`, que se dibuja por fuera y no le quita ni un
+  píxel a la tinta.
+- **El tirador era más grande que la firma.** Medía 14 píxeles y se solapaba
+  con la esquina, así que en una firma pequeña la tapaba por completo. Ahora
+  se apoya fuera de la caja, pegado a la esquina.
+
+Arreglado en `escalarCaja`, una sola función que ahora usan la pantalla
+pública de firma y el documento con sesión --el cálculo estaba copiado en los
+dos sitios, con el mismo fallo en cada copia--. Pone suelo a **las dos
+medidas** (24 puntos de ancho, 12 de alto: unos 4 mm, el límite donde una
+firma sigue siendo legible) y nunca rompe la proporción por el camino.
+
+Además:
+- Los botones **−** y **+** se apagan al llegar al límite. Un botón que no
+  hace nada se pulsa otra vez, y otra, buscando el efecto.
+- Entre los dos botones ya no dice "Tamaño" sino **el tamaño real en
+  milímetros** (`25 × 4 mm`), que es lo que de verdad hay que decidir.
+- En una hoja ancha la firma podía nacer más ancha que el tope, y entonces
+  **+** la encogía. Ya no: si no puede crecer, no se mueve y el botón se apaga.
+
+Comprobado con los bordes: una firma 6:1 se detiene a los 10 toques en
+72 × 12 puntos (25 × 4 mm) con la proporción intacta, una angosta y alta se
+frena por el ancho, y **+** nunca encoge.
+
+Nota: el arreglo de alto contraste de esta mañana ya estaba desplegado cuando
+se grabó el video (10:59 contra 11:58), así que esto era otra cosa. Lo era.
+
 ## 2026-10-02 (tarde)
 
 ### El Drive se puede recorrer: subida múltiple, fechas, buscador y papelera

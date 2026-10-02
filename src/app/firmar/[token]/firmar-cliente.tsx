@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import {
   PdfViewer,
   DEFAULT_FIELD,
+  enMilimetros,
+  escalarCaja,
   type FieldBox,
   type PendingSignature,
   type SignField,
@@ -89,6 +91,14 @@ export function FirmarCliente({
   // esquina al azar en vez de centrada.
   const tamanos = useRef<{ width: number; height: number }[]>([]);
 
+  // Si escalar ya no cambia nada, el botón correspondiente se apaga.
+  const puedeAchicar = pendiente
+    ? escalarCaja(pendiente.box, 0.85) !== pendiente.box
+    : false;
+  const puedeAgrandar = pendiente
+    ? escalarCaja(pendiente.box, 1.18) !== pendiente.box
+    : false;
+
   const campoFijo: SignField[] = datos.campo
     ? [
         {
@@ -140,18 +150,17 @@ export function FirmarCliente({
   /**
    * Escalar sin tocar el tirador de la esquina.
    *
-   * Arrastrar una esquina de 14 píxeles es incómodo en un computador e
-   * inviable en un celular, que es donde más gente va a firmar. La firma se
-   * escala entera desde su esquina inferior izquierda, que es la que la gente
-   * usa para alinearla con un renglón.
+   * Arrastrar una esquina es incómodo en un computador e inviable en un
+   * celular, que es donde más gente va a firmar. La firma se escala entera
+   * desde su esquina inferior izquierda, que es la que la gente usa para
+   * alinearla con un renglón.
+   *
+   * El cálculo vive en `escalarCaja` porque antes estaba repetido aquí y en
+   * el documento con sesión, los dos solo ponían suelo al ancho, y con una
+   * firma ancha el alto bajaba hasta hacerse invisible.
    */
   function escalar(factor: number) {
-    setPendiente((p) => {
-      if (!p) return p;
-      const w = Math.min(400, Math.max(24, p.box.w * factor));
-      const h = (w / p.box.w) * p.box.h;
-      return { ...p, box: { ...p.box, w, h } };
-    });
+    setPendiente((p) => (p ? { ...p, box: escalarCaja(p.box, factor) } : p));
   }
 
   async function confirmarFirma() {
@@ -409,22 +418,32 @@ export function FirmarCliente({
                 <div className="flex items-center justify-center gap-2">
                   <button
                     onClick={() => escalar(0.85)}
-                    disabled={firmando}
+                    // Un botón que no hace nada es peor que un botón ausente:
+                    // se pulsa otra vez, y otra, buscando el efecto.
+                    disabled={firmando || !puedeAchicar}
                     aria-label="Reducir el tamaño de la firma"
-                    className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-50"
+                    className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-40"
                   >
                     <Minus className="h-4 w-4" />
                   </button>
-                  <span className="text-sm text-muted">Tamaño</span>
+                  <span className="tnum min-w-[7.5rem] text-center text-sm text-muted">
+                    {enMilimetros(pendiente.box.w)} × {enMilimetros(pendiente.box.h)} mm
+                  </span>
                   <button
                     onClick={() => escalar(1.18)}
-                    disabled={firmando}
+                    disabled={firmando || !puedeAgrandar}
                     aria-label="Aumentar el tamaño de la firma"
-                    className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-50"
+                    className="inline-flex h-10 w-12 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-40"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
+                {!puedeAchicar && (
+                  <p className="text-center text-xs text-muted">
+                    Es el tamaño más pequeño en el que la firma se sigue
+                    leyendo. Para afinarla más, arrastra la esquina.
+                  </p>
+                )}
 
                 <button
                   onClick={confirmarFirma}

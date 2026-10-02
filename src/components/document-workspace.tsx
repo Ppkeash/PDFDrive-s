@@ -11,6 +11,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Spinner } from "@/components/spinner";
 import {
   DEFAULT_FIELD,
+  enMilimetros,
+  escalarCaja,
   type FieldBox,
   type GhostField,
   type PendingSignature,
@@ -493,18 +495,27 @@ export function DocumentWorkspace({
   /**
    * Escalar sin tocar el tirador de la esquina.
    *
-   * Arrastrar una esquina de 14 píxeles es incómodo con el mouse e inviable
-   * en un celular. La firma se escala entera desde su esquina inferior
-   * izquierda, que es la que se usa para alinearla con un renglón.
+   * Arrastrar una esquina es incómodo con el mouse e inviable en un celular.
+   * La firma se escala entera desde su esquina inferior izquierda, que es la
+   * que se usa para alinearla con un renglón.
+   *
+   * El cálculo es el mismo que en la pantalla pública de firma, y por eso
+   * vive en `escalarCaja`: estaba copiado en los dos sitios, los dos solo
+   * ponían suelo al ancho, y con una firma ancha el alto se iba a menos de un
+   * milímetro sin que nada lo frenara.
    */
   function escalarPending(factor: number) {
-    setPending((p) => {
-      if (!p) return p;
-      const w = Math.min(400, Math.max(24, p.box.w * factor));
-      const h = (w / p.box.w) * p.box.h;
-      return { ...p, box: { ...p.box, w, h } };
-    });
+    setPending((p) => (p ? { ...p, box: escalarCaja(p.box, factor) } : p));
   }
+
+  // Si escalar ya no cambiaría nada, el botón se apaga: uno que no hace nada
+  // se pulsa otra vez, y otra, buscando el efecto.
+  const puedeAchicar = pending
+    ? escalarCaja(pending.box, 0.85) !== pending.box
+    : false;
+  const puedeAgrandar = pending
+    ? escalarCaja(pending.box, 1.18) !== pending.box
+    : false;
 
   /** Crea el campo donde el usuario dejó la firma y la estampa allí. */
   async function placePending() {
@@ -562,18 +573,20 @@ export function DocumentWorkspace({
             <div className="flex shrink-0 items-center gap-1.5">
               <button
                 onClick={() => escalarPending(0.85)}
-                disabled={busy}
+                disabled={busy || !puedeAchicar}
                 aria-label="Reducir el tamaño de la firma"
-                className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-60"
+                className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-40"
               >
                 <Minus className="h-4 w-4" />
               </button>
-              <span className="text-micro uppercase text-seal">Tamaño</span>
+              <span className="tnum min-w-[6.5rem] text-center text-xs text-seal">
+                {enMilimetros(pending.box.w)} × {enMilimetros(pending.box.h)} mm
+              </span>
               <button
                 onClick={() => escalarPending(1.18)}
-                disabled={busy}
+                disabled={busy || !puedeAgrandar}
                 aria-label="Aumentar el tamaño de la firma"
-                className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-60"
+                className="inline-flex h-9 w-10 items-center justify-center rounded border border-line-strong bg-surface transition-colors hover:bg-surface-2 disabled:opacity-40"
               >
                 <Plus className="h-4 w-4" />
               </button>

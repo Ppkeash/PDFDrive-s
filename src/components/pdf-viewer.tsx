@@ -36,11 +36,74 @@ export type FieldBox = { x: number; y: number; w: number; h: number };
 
 /** Tamaño por defecto de un campo nuevo, en puntos PDF. */
 export const DEFAULT_FIELD = { w: 170, h: 55 };
-// Mínimos en puntos PDF. Estaban en 70x28, que es mas grande que una casilla
+// Mínimos en puntos PDF. Estaban en 70x28, que es más grande que una casilla
 // de tabla: al intentar encoger la firma para meterla en una, el recuadro se
-// plantaba en ese tamano y no entraba.
-const MIN_W = 24;
-const MIN_H = 10;
+// plantaba en ese tamaño y no entraba.
+export const MIN_W = 24;
+export const MIN_H = 10;
+
+/**
+ * Alto mínimo al escalar con los botones.
+ *
+ * Más alto que `MIN_H` a propósito. `MIN_H` es el suelo de arrastrar la
+ * esquina, donde se deforma a gusto; esto es el suelo de "hacerla más
+ * pequeña" conservando la proporción, y ahí el alto es lo que decide si la
+ * firma sigue siendo una firma: 12 puntos son unos 4 mm de alto.
+ */
+export const MIN_ALTO_ESCALADA = 12;
+/** Tope por arriba: más ancha que esto ya no cabe en ninguna hoja. */
+export const MAX_ANCHO_ESCALADA = 400;
+
+/**
+ * Escala una firma conservando su proporción, con suelo y techo **en las dos
+ * medidas**.
+ *
+ * Aquí estaba el fallo que hacía "desaparecer" la firma al achicarla. El
+ * cálculo de antes solo miraba el ancho:
+ *
+ *     const w = Math.min(400, Math.max(24, box.w * factor));
+ *     const h = (w / box.w) * box.h;
+ *
+ * Con una rúbrica ancha --que son casi todas: la proporción típica es 6:1--
+ * el ancho tocaba su suelo de 24 puntos mientras el alto lo seguía sin suelo
+ * ninguno y terminaba en 4 puntos. Eso es poco más de un milímetro: en
+ * pantalla, una raya de dos píxeles; en el PDF, un garabato ilegible. Parecía
+ * que la firma se hubiera borrado, y en la práctica lo estaba.
+ *
+ * Devuelve la misma caja si ya no se puede escalar más en esa dirección, para
+ * que quien llama pueda apagar el botón en vez de dejarlo pulsar sin efecto.
+ */
+export function escalarCaja(box: FieldBox, factor: number): FieldBox {
+  const proporcion = box.w / Math.max(box.h, 0.01);
+
+  // El factor se recorta para no cruzar ningún límite: el que primero topa
+  // manda, y así la proporción nunca se rompe por el camino.
+  const sueloW = MIN_W / box.w;
+  const sueloH = MIN_ALTO_ESCALADA / box.h;
+  const techo = MAX_ANCHO_ESCALADA / box.w;
+
+  let f = Math.max(factor, sueloW, sueloH);
+  f = Math.min(f, Math.max(techo, sueloW, sueloH));
+
+  // Un botón nunca hace lo contrario de lo que dice. En una hoja ancha la
+  // firma puede nacer más ancha que el techo, y entonces el recorte de arriba
+  // daría un factor menor que 1 para el botón de agrandar: "+" encogería la
+  // firma. En ese caso no se escala y el botón se apaga.
+  if (factor < 1 && f > 1) f = 1;
+  if (factor > 1 && f < 1) f = 1;
+
+  const w = box.w * f;
+  const h = w / proporcion;
+
+  // Sin cambio apreciable: quien llama lo detecta comparando.
+  if (Math.abs(w - box.w) < 0.01) return box;
+  return { ...box, w, h };
+}
+
+/** Puntos PDF a milímetros, para poder decir el tamaño en algo tangible. */
+export function enMilimetros(puntos: number): number {
+  return Math.round((puntos * 25.4) / 72);
+}
 
 /** Firma ya trazada que se está colocando, antes de confirmarla. */
 export type PendingSignature = {
@@ -525,20 +588,34 @@ function Box({
   return (
     <div
       ref={innerRef}
-      style={style}
       onPointerDown={(e) => editable && onStart(e, "move")}
       onClick={(e) => e.stopPropagation()}
+      // El contorno de una firma se dibuja con `outline`, no con `border`.
+      //
+      // Un borde vive DENTRO de la caja: con `border-2` son 2 píxeles arriba y
+      // 2 abajo. En una firma reducida a 8 píxeles de alto, el propio borde se
+      // comía la mitad del espacio de la tinta, y a 4 píxeles se la comía
+      // entera. `outline` se dibuja por fuera y no le quita ni un píxel a lo
+      // que hay dentro.
+      style={
+        image
+          ? {
+              ...style,
+              outline: `1.5px dashed rgb(var(--${mine ? "seal" : "line-strong"}))`,
+              outlineOffset: "2px",
+            }
+          : style
+      }
       className={cn(
-        "absolute flex touch-none select-none items-center justify-center rounded-sm border text-center",
+        "absolute flex touch-none select-none items-center justify-center rounded-sm text-center",
         // Sin relleno ni recuadro grueso: es un marcador de sitio, no un
         // tapón sobre el PDF. El correo ya no se escribe adentro -- entero
         // se veía sucio -- va en una etiqueta pequeña que sobresale del borde.
-        image
-          ? cn("border-2 border-dashed bg-seal/5", mine ? "border-seal" : "border-line-strong")
-          : cn(
-              "border-dashed bg-transparent",
-              mine ? "border-seal/60" : "border-line-strong/70"
-            ),
+        !image &&
+          cn(
+            "border border-dashed bg-transparent",
+            mine ? "border-seal/60" : "border-line-strong/70"
+          ),
         editable && (dragging ? "cursor-grabbing" : "cursor-grab"),
         dragging && "ring-2 ring-seal/40"
       )}
@@ -572,14 +649,20 @@ function Box({
 
       {editable && (
         <>
-          {/* Tirador de tamaño, abajo a la derecha. */}
+          {/*
+            Tirador de tamaño, por fuera de la caja.
+            Mide 18 píxeles. Antes se solapaba con la esquina (-1.5) y en una
+            firma pequeña el tirador era más grande que la firma entera: la
+            tapaba por completo. Ahora se apoya fuera, pegado a la esquina,
+            y nunca se pone encima de la tinta.
+          */}
           <span
             onPointerDown={(e) => onStart(e, "resize")}
             role="button"
             aria-label="Cambiar tamaño"
             className={cn(
-              "absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm border-2 bg-surface",
-              mine ? "border-seal" : "border-line-strong"
+              "absolute -bottom-4 -right-4 h-[18px] w-[18px] cursor-nwse-resize rounded-full border-2 border-surface shadow-card",
+              mine ? "bg-seal" : "bg-line-strong"
             )}
           />
           {onRemove && (
