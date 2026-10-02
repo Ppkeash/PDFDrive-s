@@ -12,6 +12,34 @@ comportamiento en producción y en el repo no queda rastro.
 
 ## 2026-10-01
 
+### La verdadera razón de que el invitado no viera el PDF
+El cambio anterior alargó la vida de la URL del archivo, que era un problema
+real, pero no era **el** problema: alguien de fuera seguía sin ver el
+documento.
+
+`/pdf.worker.min.mjs` devolvía **307 a /login** a quien no tuviera sesión.
+
+El visor carga ese archivo para trabajar. El middleware solo dejaba pasar
+imágenes, así que lo trataba como una ruta privada y le respondía con una
+redirección: el visor recibía HTML donde esperaba código y moría con un escueto
+"No se pudo abrir el PDF".
+
+Pasaba desapercibido —y por eso las dos primeras hipótesis fallaron— porque
+pdf.js, al no poder cargar el worker, cae a un modo de respaldo que corre en el
+hilo principal. En un equipo rápido el documento igual aparecía. Funcionaba
+aquí y no en el equipo de otra persona.
+
+Ahora el middleware deja pasar los estáticos por extensión, no solo las
+imágenes. Comprobado: el worker responde 200 con 1.2 MB de JavaScript, y
+`/drive` sigue redirigiendo al login.
+
+Van además dos cosas para no volver a adivinar:
+
+- El visor **muestra el error real** en vez de una frase genérica.
+- La pantalla de firma ofrece **abrir el PDF en otra pestaña**. Quien va a
+  firmar tiene que poder leer el documento aunque el visor falle por cualquier
+  otro motivo.
+
 ### El invitado no podía ver el PDF, y la firma no encajaba
 Dos fallos distintos que salieron de la misma prueba: abrir el enlace como
 alguien de fuera.
